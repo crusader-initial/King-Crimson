@@ -1,0 +1,32 @@
+name: second_me_flutter
+description: A new Flutter project for Second Me.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.1.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # Networking
+  dio: ^5.4.0
+  
+  # File picking
+  file_picker: ^6.1.1
+  
+  # State management & UI
+  provider: ^6.1.1
+  google_fonts: ^6.1.0
+  
+  # Utilities
+  path: ^1.8.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
