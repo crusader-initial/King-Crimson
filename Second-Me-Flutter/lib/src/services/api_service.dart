@@ -35,7 +35,7 @@ class ApiService {
       });
 
       final response = await _dio.post(
-        '/upload',
+        '/file',
         data: formData,
         options: Options(
           headers: {
