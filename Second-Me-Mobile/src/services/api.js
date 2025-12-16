@@ -47,4 +47,19 @@ export const sendChatMessage = async (query) => {
   }
 };
 
+export const createUser = async (name, email = '', description = null) => {
+  try {
+    const response = await api.post('/loads', {
+      name,
+      email,
+      description,
+      status: 'active'
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Create user error:', error);
+    throw error;
+  }
+};
+
 export default api;

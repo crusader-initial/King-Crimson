@@ -74,6 +74,29 @@ uvicorn app.main:app --reload
     *   功能: 删除文件记录、相关 chunks、向量数据以及物理文件
     *   参数: `filename`（文件名）
 
+#### 用户管理接口
+
+*   **POST /api/loads**: 创建用户接口
+    *   功能: 创建新用户记录
+    *   请求体: JSON 格式
+        ```json
+        {
+            "name": "用户名（必填）",
+            "email": "user@example.com（可选，默认空字符串）",
+            "description": "用户描述（可选）",
+            "avatar_data": "base64编码的头像数据（可选）",
+            "instance_id": "实例ID（可选）",
+            "instance_password": "实例密码（可选）",
+            "status": "active（可选，默认active，可选值：active/inactive/deleted）"
+        }
+        ```
+    *   响应: 返回创建的用户信息
+    *   错误处理: 邮箱重复、必填字段缺失等会返回相应错误
+    
+*   **GET /api/loads/current**: 获取当前用户记录
+    *   功能: 获取当前活跃用户信息
+    *   响应: 返回用户详细信息
+
 #### 其他接口
 
 *   **POST /api/chat**: 发送对话请求 `{"query": "你的问题"}`。
