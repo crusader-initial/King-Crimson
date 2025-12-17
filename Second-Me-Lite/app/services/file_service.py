@@ -9,6 +9,7 @@ from fastapi import UploadFile, HTTPException
 from app.models.document import Document, Memory, Chunk
 from app.core.vector import get_embedding, store_embedding
 from app.core.config import settings
+from app.services.processors import ProcessorFactory, UnsupportedFileType
 
 logger = logging.getLogger(__name__)
 
@@ -105,27 +106,36 @@ class FileService:
                 detail=f"文件 '{filename}' 已存在"
             )
         
-        # 5. 读取文件内容
+        # 5. 使用 ProcessorFactory 自动检测并处理文件
         try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                content = f.read()
-        except Exception as e:
-            logger.error(f"读取文件内容失败: {str(e)}", exc_info=True)
+            doc_result = ProcessorFactory.auto_detect_and_process(str(filepath))
+            logger.info(f"文件处理成功: {filename}, 类型: {doc_result.file_type}")
+        except UnsupportedFileType as e:
+            logger.warning(f"不支持的文件类型: {filename}, 错误: {str(e)}")
             # 删除已保存的文件
             if os.path.exists(filepath):
                 os.remove(filepath)
-            raise HTTPException(status_code=500, detail=f"读取文件内容失败: {str(e)}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"不支持的文件类型: {str(e)}"
+            )
+        except Exception as e:
+            logger.error(f"处理文件失败: {str(e)}", exc_info=True)
+            # 删除已保存的文件
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            raise HTTPException(status_code=500, detail=f"处理文件失败: {str(e)}")
         
         # 6. 创建 Document 记录（先创建 Document，因为需要它的 id）
         try:
             document = Document(
                 name=filename,
                 title=metadata.get('title', filename) if metadata else filename,
-                mime_type=self._get_mime_type(filename),
-                raw_content=content,
+                mime_type=doc_result.mime_type,
+                raw_content=doc_result.raw_content,
                 user_description=metadata.get('description', '') if metadata else '',
                 url=str(filepath),
-                document_size=filesize,
+                document_size=doc_result.file_size,
                 extract_status='SUCCESS',
                 embedding_status='INITIALIZED',
                 analyze_status='INITIALIZED'
@@ -171,7 +181,7 @@ class FileService:
             
         # 8. 处理文档（切片、生成向量）
         try:
-            chunks_count = self._process_document(db, document, content)
+            chunks_count = self._process_document(db, document, doc_result.raw_content)
             logger.info("文件上传处理完成")
             
             return {
@@ -334,7 +344,7 @@ class FileService:
         return len(chunks)
     
     def _get_file_type(self, filename: str) -> str:
-        """获取文件类型"""
+        """获取文件类型（用于 Memory 表）"""
         ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
         type_map = {
             'txt': 'text',
@@ -342,16 +352,6 @@ class FileService:
             'pdf': 'pdf'
         }
         return type_map.get(ext, 'unknown')
-    
-    def _get_mime_type(self, filename: str) -> str:
-        """获取 MIME 类型"""
-        ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
-        mime_map = {
-            'txt': 'text/plain',
-            'md': 'text/markdown',
-            'pdf': 'application/pdf'
-        }
-        return mime_map.get(ext, 'application/octet-stream')
     
     def _save_file_to_disk(self, file: UploadFile) -> Tuple[Path, str, int]:
         """保存文件到磁盘

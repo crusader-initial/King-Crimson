@@ -3,7 +3,7 @@ from app.api.endpoints import router
 from app.core.database import engine, Base
 from app.core.config import settings
 # 导入所有模型以确保表被创建
-from app.models import Document, Chunk, ChatHistory, Load
+from app.models import Document, Chunk, ChatHistory, Load, StatusBiography
 
 # Create tables
 Base.metadata.create_all(bind=engine)

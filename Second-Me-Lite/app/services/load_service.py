@@ -133,4 +133,30 @@ class LoadService:
         except Exception as e:
             logger.error(f"获取用户失败: {str(e)}", exc_info=True)
             return None, f"获取用户失败: {str(e)}", 500
+    
+    @staticmethod
+    def update_description(db: Session, description: str) -> Tuple[bool, Optional[str]]:
+        """
+        更新当前用户的描述
+        
+        Args:
+            db: 数据库会话
+            description: 新的描述内容
+            
+        Returns:
+            Tuple[是否成功, 错误信息]
+        """
+        try:
+            current_load = db.query(Load).first()
+            if not current_load:
+                return False, "未找到用户记录"
+            
+            current_load.description = description
+            db.commit()
+            logger.info("Updated loads.description")
+            return True, None
+        except Exception as e:
+            db.rollback()
+            logger.error(f"更新用户描述失败: {str(e)}", exc_info=True)
+            return False, str(e)
 
