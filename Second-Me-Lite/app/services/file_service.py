@@ -47,7 +47,8 @@ class FileService:
         self, 
         db: Session, 
         file: UploadFile, 
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        role_id: Optional[str] = None  # 角色ID（字符串格式，需要转换为 Integer）
     ) -> Dict[str, Any]:
         """
         上传文件并处理
@@ -138,7 +139,8 @@ class FileService:
                 document_size=doc_result.file_size,
                 extract_status='SUCCESS',
                 embedding_status='INITIALIZED',
-                analyze_status='INITIALIZED'
+                analyze_status='INITIALIZED',
+                role_id=int(role_id) if role_id and role_id.isdigit() else None  # 关联角色ID（Integer类型），如果无法转换则设为None
             )
             db.add(document)
             db.commit()

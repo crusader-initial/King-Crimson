@@ -70,6 +70,7 @@ class Document(Base):
     insight = Column(Text, nullable=True)
     summary = Column(Text, nullable=True)
     keywords = Column(Text, nullable=True)
+    role_id = Column(Integer, nullable=True, index=True)  # 关联到 roles.id (Integer类型)
     
     __table_args__ = (
         CheckConstraint("extract_status IN ('INITIALIZED', 'SUCCESS', 'FAILED')", name='document_extract_status_check'),

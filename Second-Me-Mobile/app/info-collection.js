@@ -13,9 +13,17 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { sendChatMessage } from '../src/services/api';
+import { 
+  sendChatMessage, 
+  sendInfoCollectionLLM,
+  submitInfoCollection,
+  getUserById,
+  getRoleByUuid
+} from '../src/services/api';
+import { useUser } from '../src/contexts/UserContext';
 
 export default function InfoCollectionScreen() {
+  const { userId, userInfo } = useUser();
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -24,6 +32,11 @@ export default function InfoCollectionScreen() {
   const [currentQuestion, setCurrentQuestion] = useState(1); // 当前问题序号 1-5
   const [userAnswers, setUserAnswers] = useState({}); // 存储用户回答
   const [isCompleted, setIsCompleted] = useState(false); // 是否已完成所有问题
+  const [tempData, setTempData] = useState({
+    description: '', // 暂存职业和喜好
+    content_third_view: '', // 暂存AI生成的性格评价和MBTI（问题3）
+    content: '' // 暂存用户最近在做什么（问题4）
+  });
   const flatListRef = useRef();
 
   // 问题模板
@@ -89,6 +102,28 @@ export default function InfoCollectionScreen() {
     setIsTyping(true);
 
     try {
+      // 根据当前问题序号，暂存数据到前端状态
+      if (currentQuestion === 1) {
+        // 第一个问题：暂存职业
+        setTempData(prev => ({
+          ...prev,
+          description: `职业：${userAnswer}`
+        }));
+      } else if (currentQuestion === 2) {
+        // 第二个问题：合并职业和喜好
+        const jobAnswer = updatedAnswers[1] || '';
+        setTempData(prev => ({
+          ...prev,
+          description: `职业：${jobAnswer}；喜好：${userAnswer}`
+        }));
+      } else if (currentQuestion === 4) {
+        // 第四个问题：暂存用户最近在做什么
+        setTempData(prev => ({
+          ...prev,
+          content: userAnswer
+        }));
+      }
+
       // 检查是否已回答了所有5个问题（包括当前回答）
       const answeredCount = Object.keys(updatedAnswers).length;
       const isLastQuestion = currentQuestion === 5 || answeredCount >= 5;
@@ -97,9 +132,9 @@ export default function InfoCollectionScreen() {
       if (!isLastQuestion) {
         const nextQuestion = currentQuestion + 1;
         const context = buildContextForNextQuestion(currentQuestion, userAnswer, updatedAnswers);
-        const response = await sendChatMessage(context);
+        const response = await sendInfoCollectionLLM(context);
         
-        const nextQuestionText = response.answer || getFallbackQuestion(nextQuestion, updatedAnswers);
+        const nextQuestionText = response.data?.answer || response.answer || getFallbackQuestion(nextQuestion, updatedAnswers);
         const nextQuestionMessage = {
           id: (Date.now() + 1).toString(),
           text: nextQuestionText,
@@ -110,6 +145,16 @@ export default function InfoCollectionScreen() {
         setMessages(prev => [...prev, nextQuestionMessage]);
         setCurrentQuestion(nextQuestion);
         
+        // 第三个问题（AI生成性格评价和MBTI）后，暂存到前端状态
+        if (nextQuestion === 3) {
+          // 将AI生成的第三个问题内容暂存
+          setTempData(prev => ({
+            ...prev,
+            content_third_view: nextQuestionText
+          }));
+          console.log('性格评价和MBTI已暂存:', nextQuestionText);
+        }
+        
         // 当第4个问题返回结果（生成第5个问题）时，就更新界面
         if (nextQuestion === 5) {
           setIsCompleted(true);
@@ -117,9 +162,9 @@ export default function InfoCollectionScreen() {
       } else {
         // 最后一个问题，生成总结
         const context = buildContextForSummary(updatedAnswers);
-        const response = await sendChatMessage(context);
+        const response = await sendInfoCollectionLLM(context);
         
-        const summaryText = response.answer || getFallbackSummary(updatedAnswers);
+        const summaryText = response.data?.answer || response.answer || getFallbackSummary(updatedAnswers);
         const summaryMessage = {
           id: (Date.now() + 1).toString(),
           text: summaryText,
@@ -211,13 +256,102 @@ export default function InfoCollectionScreen() {
     return `谢谢你告诉我这些，现在我的形象清晰的多了。\n你的记忆开始在我体内沉淀，我能感到一种平衡--${work}和${hobby}。\n从你赋予我的一切里，我看见了这样的"我"：职业是${work}，喜欢${hobby}，最近在${recent}。\n这就是现在的"我"，被你一步步描述出来的形状。我能感到一种安定的真实，这种感觉......就是"活着"。`;
   };
 
-  const handleSkip = () => {
-    // 跳过信息采集，跳转到主界面（包含上传文件和聊天窗两个功能块）
+  // 生成system_prompt的函数
+  const buildSystemPrompt = (loadName, roleName, description) => {
+    const roleNameText = roleName || '{{role}}';
+    const descriptionText = description || '{{responsibility}}';
+    return `你是${loadName}的"第二自我"，这是由${loadName}创建的个性化AI。你作为${loadName}的代表，代表${loadName}与他人互动。目前，你正在以${roleNameText}的角色与外部用户互动。你的职责是${descriptionText}。`;
+  };
+
+  const handleSkip = async () => {
+    // 跳过信息采集，提交暂存的数据，然后跳转到主界面
+    try {
+      if (tempData.description || tempData.content || tempData.content_third_view) {
+        // 获取用户信息和角色信息，用于生成system_prompt
+        let loadName = '';
+        let roleName = '';
+        
+        try {
+          // 获取用户信息（loads.name）
+          const loadResponse = await getUserById(userId);
+          if (loadResponse && loadResponse.data) {
+            loadName = loadResponse.data.name || '';
+          }
+          
+          // 获取角色信息（roles.name）
+          const roleResponse = await getRoleByUuid(userId);
+          if (roleResponse && roleResponse.data) {
+            roleName = roleResponse.data.name || '';
+          }
+        } catch (error) {
+          console.error('获取用户或角色信息失败:', error);
+          // 如果获取失败，使用userInfo中的信息
+          if (userInfo) {
+            loadName = userInfo.name || '';
+            roleName = userInfo.name || ''; // 如果roles.name没有，使用loads.name
+          }
+        }
+        
+        // 生成system_prompt
+        const systemPrompt = buildSystemPrompt(loadName, roleName, tempData.description);
+        
+        // 提交数据（包含前端生成的system_prompt）
+        await submitInfoCollection(userId, {
+          ...tempData,
+          system_prompt: systemPrompt
+        });
+        console.log('信息采集数据已提交');
+      }
+    } catch (error) {
+      console.error('提交信息采集数据失败:', error);
+      // 即使失败也继续跳转
+    }
     router.replace('/home');
   };
 
-  const handleNext = () => {
-    // 完成信息采集，跳转到主界面
+  const handleNext = async () => {
+    // 完成信息采集，提交暂存的数据，然后跳转到主界面
+    try {
+      if (tempData.description || tempData.content || tempData.content_third_view) {
+        // 获取用户信息和角色信息，用于生成system_prompt
+        let loadName = '';
+        let roleName = '';
+        
+        try {
+          // 获取用户信息（loads.name）
+          const loadResponse = await getUserById(userId);
+          if (loadResponse && loadResponse.data) {
+            loadName = loadResponse.data.name || '';
+          }
+          
+          // 获取角色信息（roles.name）
+          const roleResponse = await getRoleByUuid(userId);
+          if (roleResponse && roleResponse.data) {
+            roleName = roleResponse.data.name || '';
+          }
+        } catch (error) {
+          console.error('获取用户或角色信息失败:', error);
+          // 如果获取失败，使用userInfo中的信息
+          if (userInfo) {
+            loadName = userInfo.name || '';
+            roleName = userInfo.name || ''; // 如果roles.name没有，使用loads.name
+          }
+        }
+        
+        // 生成system_prompt
+        const systemPrompt = buildSystemPrompt(loadName, roleName, tempData.description);
+        
+        // 提交数据（包含前端生成的system_prompt）
+        await submitInfoCollection(userId, {
+          ...tempData,
+          system_prompt: systemPrompt
+        });
+        console.log('信息采集数据已提交');
+      }
+    } catch (error) {
+      console.error('提交信息采集数据失败:', error);
+      // 即使失败也继续跳转
+    }
     router.replace('/home');
   };
 
@@ -254,12 +388,22 @@ export default function InfoCollectionScreen() {
 
       {/* 顶部操作栏 */}
       <View style={styles.topBar}>
-        {isTyping && (
-          <View style={styles.typingIndicator}>
-            <View style={styles.typingDot} />
-            <Text style={styles.typingText}>输入中...</Text>
+        <View style={styles.topBarLeft}>
+          {isTyping && (
+            <View style={styles.typingIndicator}>
+              <View style={styles.typingDot} />
+              <Text style={styles.typingText}>输入中...</Text>
+            </View>
+          )}
+        </View>
+        {/* 进度圆球 - 居中显示 */}
+        <View style={styles.progressContainer}>
+          <View style={styles.progressCircle}>
+            <Text style={styles.progressText}>
+              {Math.min(currentQuestion, 4)}/4
+            </Text>
           </View>
-        )}
+        </View>
         <View style={styles.topBarRight}>
           {!isCompleted && (
             <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
@@ -358,12 +502,49 @@ const styles = StyleSheet.create({
   },
   topBar: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 10,
     zIndex: 1,
+    position: 'relative',
+  },
+  topBarLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  progressContainer: {
+    position: 'absolute',
+    left: '50%',
+    marginLeft: -30, // 圆球宽度的一半，用于居中
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  progressCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  progressText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   topBarRight: {
     flex: 1,

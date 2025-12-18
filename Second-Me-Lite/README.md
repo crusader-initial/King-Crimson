@@ -21,8 +21,8 @@ Second-Me-Lite/
 │   ├── api/            # 路由定义
 │   ├── core/           # 核心配置 (DB, Vector, Config)
 │   ├── models/         # 数据库模型 (SQLAlchemy)
-│   ├── services/       # 业务逻辑 (Chat, FileService)
-│   └── main.py         # 应用入口
+│   └── services/       # 业务逻辑 (Chat, FileService)
+├── run.py              # 应用入口和启动脚本
 ├── requirements.txt    # 依赖列表
 └── .env.example        # 环境变量示例
 ```
@@ -53,10 +53,10 @@ cp .env.example .env
 ### 3. 运行服务
 
 ```bash
-uvicorn app.main:app --reload
+python run.py
 ```
 
-服务将在 `http://localhost:8000` 启动。
+服务将在 `http://localhost:8001` 启动。
 
 ### 4. API 使用指南
 
@@ -76,26 +76,74 @@ uvicorn app.main:app --reload
 
 #### 用户管理接口
 
-*   **POST /api/loads**: 创建用户接口
-    *   功能: 创建新用户记录
+*   **POST /api/loads/login**: 登录或创建用户接口（根据手机号）
+    *   功能: 根据手机号登录或创建用户，如果用户存在则返回用户信息，不存在则创建新用户
     *   请求体: JSON 格式
         ```json
         {
-            "name": "用户名（必填）",
-            "email": "user@example.com（可选，默认空字符串）",
-            "description": "用户描述（可选）",
-            "avatar_data": "base64编码的头像数据（可选）",
-            "instance_id": "实例ID（可选）",
-            "instance_password": "实例密码（可选）",
-            "status": "active（可选，默认active，可选值：active/inactive/deleted）"
+            "user_mobile": "13800138000（必填）",
+            "name": "用户名（可选，创建新用户时使用）"
         }
         ```
-    *   响应: 返回创建的用户信息
-    *   错误处理: 邮箱重复、必填字段缺失等会返回相应错误
+    *   响应: 返回用户信息，包含 `is_new_user` 字段标识是否为新创建的用户
     
-*   **GET /api/loads/current**: 获取当前用户记录
-    *   功能: 获取当前活跃用户信息
+*   **GET /api/loads/{load_id}**: 根据用户ID获取用户信息
+    *   功能: 根据用户ID获取用户详细信息
+    *   参数: `load_id`（用户ID）
     *   响应: 返回用户详细信息
+    
+*   **PUT /api/loads/{load_id}**: 更新用户信息
+    *   功能: 根据用户ID更新用户信息（支持部分更新）
+    *   参数: `load_id`（用户ID）
+    *   请求体: JSON 格式，所有字段可选
+        ```json
+        {
+            "name": "新用户名",
+            "description": "新描述",
+            "email": "new@example.com"
+        }
+        ```
+    *   响应: 返回更新结果
+
+#### 状态传记接口
+
+*   **PUT /api/status-biography/{role_id}**: 创建或更新状态传记（upsert）
+    *   功能: 根据角色ID创建或更新状态传记记录
+    *   参数: `role_id`（角色ID，即 `loads.id`，因为 `role.id` 和 `role.uuid` 都使用 `loads.id`）
+    *   请求体: JSON 格式，所有字段可选
+        ```json
+        {
+            "content": "状态传记内容",
+            "content_third_view": "第三方视角内容",
+            "summary": "摘要",
+            "summary_third_view": "第三方视角摘要"
+        }
+        ```
+    *   响应: 返回操作结果
+
+#### L1传记接口
+
+*   **PUT /api/l1-bios/{role_id}**: 创建或更新L1传记（upsert，按角色ID）
+    *   功能: 根据角色ID创建或更新L1传记记录
+    *   参数: `role_id`（角色ID，即 `loads.id`，因为 `role.id` 和 `role.uuid` 都使用 `loads.id`）
+    *   请求体: JSON 格式
+        ```json
+        {
+            "content_third_view": "第三方视角内容"
+        }
+        ```
+    *   响应: 返回操作结果
+
+*   **POST /api/l1-bios/{role_id}/version**: 创建新的L1传记版本（按角色ID）
+    *   功能: 为指定角色创建新版本的L1传记记录
+    *   参数: `role_id`（角色ID）
+    *   请求体: JSON 格式
+        ```json
+        {
+            "content_third_view": "第三方视角内容"
+        }
+        ```
+    *   响应: 返回创建结果
 
 #### 其他接口
 

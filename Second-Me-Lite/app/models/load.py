@@ -18,6 +18,7 @@ class Load(Base):
     status = Column(String(20), default='active', nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)
+    user_mobile = Column(String(20), nullable=True)  # 手机号字段
     
     __table_args__ = (
         CheckConstraint("status IN ('active', 'inactive', 'deleted')", name='loads_status_check'),
@@ -33,6 +34,7 @@ class Load(Base):
             'avatar_data': self.avatar_data,
             'instance_id': self.instance_id,
             'status': self.status,
+            'user_mobile': self.user_mobile,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

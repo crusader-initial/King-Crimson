@@ -2,27 +2,45 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, StatusBar, Activit
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { createUser } from '../src/services/api';
+import { updateRoleName } from '../src/services/api';
+import { useUser } from '../src/contexts/UserContext';
 
 export default function NameInputScreen() {
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
+  const { userId, userInfo, updateUserInfo } = useUser();
 
   const handleNext = async () => {
     if (!name.trim() || loading) return;
+    
+    if (!userId) {
+      Alert.alert('错误', '未找到用户ID，请重新登录');
+      router.replace('/login');
+      return;
+    }
 
     setLoading(true);
     try {
-      const response = await createUser(name.trim());
+      // 更新角色名称（只更新roles.name，不更新loads.name）
+      const response = await updateRoleName(userId, name.trim());
       if (response.code === 200) {
-        // 创建成功，跳转到信息采集页面
-        router.push('/info-collection');
+        // 直接更新本地用户信息的 name 字段
+        if (userInfo) {
+          await updateUserInfo({
+            ...userInfo,
+            name: name.trim()
+          });
+        }
+        
+        // 更新成功，跳转到信息采集页面
+        router.replace('/info-collection');
       } else {
-        Alert.alert('错误', response.message || '创建用户失败');
+        Alert.alert('错误', response.message || '更新角色名称失败');
       }
     } catch (error) {
-      console.error('Create user error:', error);
-      Alert.alert('错误', '网络请求失败，请检查网络连接');
+      console.error('Update role name error:', error);
+      const errorMessage = error?.response?.data?.message || '网络请求失败，请检查网络连接';
+      Alert.alert('错误', errorMessage);
     } finally {
       setLoading(false);
     }

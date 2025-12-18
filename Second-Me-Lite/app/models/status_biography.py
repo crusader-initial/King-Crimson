@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Text, DateTime
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
 from datetime import datetime
 from app.core.database import Base
 
@@ -7,6 +7,7 @@ class StatusBiography(Base):
     __tablename__ = "status_biography"
     
     id = Column(Integer, primary_key=True, index=True)
+    role_id = Column(Integer, ForeignKey('roles.id', ondelete='SET NULL'), nullable=True)  # 根据实际数据库表结构，role_id 是 int4
     content = Column(Text, nullable=False)
     content_third_view = Column(Text, nullable=False)
     summary = Column(Text, nullable=False)
