@@ -36,21 +36,21 @@ class DocumentService:
             Exception: 分析失败
         """
         try:
-            # 1. 获取文档
+            # 获取文档
             document = db.query(Document).filter(Document.id == document_id).first()
             if not document:
-                raise ValueError(f"文档不存在: {document_id}")
+                raise ValueError(f"Document not found with id: {document_id}")
             
-            # 2. 获取 BioInfo（根据文档关联的 role_id）
+            # 获取 BioInfo（根据文档关联的 role_id）
             bio_info = self._get_bio_info(db, document)
             
-            # 3. 生成 Insight（两阶段）
+            # 生成 insight
             insight_text, title, insight_json = self.insight_kernel.analyze(document, bio_info)
             
-            # 4. 生成 Summary（使用已生成的 insight）
+            # 生成 summary（使用已生成的 insight）
             summary_result = self.summary_kernel.analyze(document, insight_text)
             
-            # 5. 更新数据库
+            # 更新数据库
             document.insight = json.dumps(insight_json, ensure_ascii=False)
             document.summary = json.dumps(summary_result, ensure_ascii=False)
             document.keywords = json.dumps(summary_result.get("keywords", []), ensure_ascii=False)
@@ -63,10 +63,10 @@ class DocumentService:
             return document
             
         except ValueError as e:
-            logger.error(f"文档不存在: {str(e)}")
+            logger.error(f"Document {document_id} not found: {str(e)}")
             raise
         except Exception as e:
-            logger.error(f"分析文档失败: {str(e)}", exc_info=True)
+            logger.error(f"Error analyzing document {document_id}: {str(e)}", exc_info=True)
             # 更新状态为失败
             self._update_analyze_status_failed(db, document_id)
             raise
@@ -89,16 +89,17 @@ class DocumentService:
                 logger.warning(f"文档 {document.id} 未关联角色，返回空的 BioInfo")
                 return BioInfo()
             
-            role_id = document.role_id  # role_id 是 Integer 类型
+            role_id = document.role_id  # document.role_id 是 Integer 类型
             
             # 1. 获取状态传记（从 status_biography 表）
+            # 注意：status_biography.role_id 是 varchar(36)，需要转换为字符串进行比较
             status_bio = db.query(StatusBiography).filter(
-                StatusBiography.role_id == role_id
+                StatusBiography.role_id == str(role_id)
             ).first()
             
             # 2. 获取角色信息（从 role 表）
             from app.models.role import Role
-            role = db.query(Role).filter(Role.id == role_id).first()  # role.id 是 Integer 类型
+            role = db.query(Role).filter(Role.id == str(role_id)).first()  # role.id 是 String(36) 类型
             if not role:
                 logger.warning(f"未找到角色 {role_id}，返回空的 BioInfo")
                 return BioInfo()

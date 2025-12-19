@@ -41,6 +41,7 @@ class Memory(Base):
     path = Column(String(1024), nullable=False)
     meta_data = Column(Text, nullable=True)
     document_id = Column(String(36), nullable=True)  # 数据库中是 varchar(36)，存储 document.id 的字符串形式
+    role_id = Column(Integer, nullable=True, index=True)  # 关联到 roles.id (Integer类型)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     status = Column(String(20), default='active', nullable=False)

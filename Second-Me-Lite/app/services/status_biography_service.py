@@ -13,7 +13,7 @@ class StatusBiographyService:
     @staticmethod
     def update(
         db: Session,
-        role_id: Optional[int] = None,  # 根据实际数据库表结构，role_id 是 int4
+        role_id: Optional[str] = None,  # 根据实际数据库表结构，role_id 是 varchar(36)
         content: Optional[str] = None,
         content_third_view: Optional[str] = None,
         summary: Optional[str] = None,

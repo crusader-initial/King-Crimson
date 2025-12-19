@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 @router.put("/status-biography/{role_id}")
 def upsert_status_biography(
-    role_id: int,  # 根据实际数据库表结构，role_id 是 int4
+    role_id: str,  # 根据实际数据库表结构，role_id 是 varchar(36)
     request: StatusBiographyRequest,
     db: Session = Depends(get_db)
 ):
@@ -19,7 +19,7 @@ def upsert_status_biography(
     创建或更新状态传记（upsert）
     
     Args:
-        role_id: 角色ID（roles.id，Integer类型）
+        role_id: 角色ID（roles.id，String类型，varchar(36)）
         request: 状态传记数据（所有字段可选）
         
     Returns:

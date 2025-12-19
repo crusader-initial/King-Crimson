@@ -11,7 +11,7 @@ class InsightKernel:
     
     def __init__(self):
         self.generator = L0Generator()
-        self.preferred_language = "zh-CN"
+        self.preferred_language = "ch_zh"  # 默认使用中文语言
     
     def analyze(self, doc: Document, bio_info: BioInfo) -> Tuple[str, str, Dict]:
         """

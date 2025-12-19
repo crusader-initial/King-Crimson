@@ -157,6 +157,8 @@ class FileService:
         
         # 7. 创建 Memory 记录（关联到 document）
         try:
+            # 获取 role_id（从 document 或参数中）
+            memory_role_id = int(role_id) if role_id and role_id.isdigit() else document.role_id
             memory = Memory(
                 id=str(uuid.uuid4()),
                 name=filename,
@@ -165,6 +167,7 @@ class FileService:
                 path=str(filepath),
                 meta_data=json.dumps(metadata) if metadata else None,
                 document_id=str(document.id),  # 转换为字符串，因为数据库中是 varchar(36)
+                role_id=memory_role_id,  # 关联角色ID（Integer类型）
                 status='active'
             )
             db.add(memory)

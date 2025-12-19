@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, UploadFile, File, Form, Header
+from fastapi import APIRouter, Depends, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import Optional
 from app.core.database import get_db
@@ -19,13 +19,13 @@ document_service = DocumentService()
 def upload_file(
     file: UploadFile = File(...),
     metadata: str = Form(None),
-    role_id: Optional[str] = Header(None, alias="X-User-ID"),  # 从请求头获取用户ID（role_id，Integer类型，以字符串形式传递）
+    role_id: Optional[str] = Form(None),  # 从 Form 参数获取 role_id
     db: Session = Depends(get_db)
 ):
     """
     文件上传接口
     
-    支持从请求头 X-User-ID 获取用户ID（role_id），或从 metadata 中获取
+    支持从 Form 参数 role_id 获取用户ID，或从 metadata 中获取
     """
     # 解析元数据
     metadata_dict = {}
@@ -35,7 +35,7 @@ def upload_file(
         except:
             pass
     
-    # 优先从请求头获取，其次从 metadata 获取
+    # 优先从 Form 参数获取，其次从 metadata 获取
     user_role_id = role_id or metadata_dict.get('role_id') or metadata_dict.get('load_id') or metadata_dict.get('user_id')
     
     return file_service.upload_file(db, file, metadata_dict, user_role_id)

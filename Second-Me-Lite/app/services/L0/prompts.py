@@ -39,9 +39,9 @@ INSIGHT_DOC_OVERVIEW = """
 }}
 
 # <用户个人简介信息> #
-- 用户自我评估："{about_me}"
-- 他人对当前用户偏好及性格的评价总结："{global_bio}"
-- 用户近期活动总结："{status_bio}"
+- 用户自我评估："{__about_me__}"
+- 他人对当前用户偏好及性格的评价总结："{__global_bio__}"
+- 用户近期活动总结："{__status_bio__}"
 
 内容：{content}
 """

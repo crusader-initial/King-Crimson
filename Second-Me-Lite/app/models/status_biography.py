@@ -7,7 +7,7 @@ class StatusBiography(Base):
     __tablename__ = "status_biography"
     
     id = Column(Integer, primary_key=True, index=True)
-    role_id = Column(Integer, ForeignKey('roles.id', ondelete='SET NULL'), nullable=True)  # 根据实际数据库表结构，role_id 是 int4
+    role_id = Column(String(36), ForeignKey('roles.id', ondelete='SET NULL'), nullable=True)  # 根据实际数据库表结构，role_id 是 varchar(36)
     content = Column(Text, nullable=False)
     content_third_view = Column(Text, nullable=False)
     summary = Column(Text, nullable=False)
