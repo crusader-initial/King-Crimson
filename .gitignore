@@ -1,0 +1,24 @@
+Second-Me-Mobile/node_modules/
+.expo/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+# MacOS
+.DS_Store
+
+# Android build files
+Second-Me-Mobile/android/app/build/
+Second-Me-Mobile/android/build/
+Second-Me-Mobile/android/.gradle/
+Second-Me-Mobile/android/local.properties
+Second-Me-Mobile/android/app/release/
+Second-Me-Mobile/android/app/debug/
+Second-Me-Mobile/android/.idea/
+Second-Me-Mobile/android/*.iml
+Second-Me-Mobile/android/app/*.apk
+Second-Me-Mobile/android/app/*.aab
+Second-Me-Mobile/android/app/*.ap_
+*.apk
+*.aab
+*.ap_
