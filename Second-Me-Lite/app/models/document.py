@@ -3,7 +3,6 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from datetime import datetime
 from app.core.database import Base
-import uuid
 
 # 尝试导入 PGVector 类型支持
 try:
@@ -34,14 +33,14 @@ class Memory(Base):
     """文件元数据表"""
     __tablename__ = "memories"
     
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(Integer, primary_key=True, autoincrement=True)  # 自增主键 (serial4)
+    role_id = Column(String(36), nullable=False, index=True)  # 关联到 roles.id (varchar(36)类型，NOT NULL)
     name = Column(String(255), nullable=False)
     size = Column(Integer, nullable=False)
     type = Column(String(50), nullable=False)
     path = Column(String(1024), nullable=False)
     meta_data = Column(Text, nullable=True)
-    document_id = Column(String(36), nullable=True)  # 数据库中是 varchar(36)，存储 document.id 的字符串形式
-    role_id = Column(Integer, nullable=True, index=True)  # 关联到 roles.id (Integer类型)
+    document_id = Column(Integer, nullable=True)  # 关联到 document.id (int4类型)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     status = Column(String(20), default='active', nullable=False)
@@ -71,7 +70,7 @@ class Document(Base):
     insight = Column(Text, nullable=True)
     summary = Column(Text, nullable=True)
     keywords = Column(Text, nullable=True)
-    role_id = Column(Integer, nullable=True, index=True)  # 关联到 roles.id (Integer类型)
+    role_id = Column(String(36), nullable=True, index=True)  # 关联到 roles.id (varchar(36)类型)
     
     __table_args__ = (
         CheckConstraint("extract_status IN ('INITIALIZED', 'SUCCESS', 'FAILED')", name='document_extract_status_check'),

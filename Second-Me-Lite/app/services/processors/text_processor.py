@@ -17,7 +17,21 @@ class TextProcessor(BaseFileProcessor):
         """处理文本文件"""
         try:
             # 尝试多种编码
-            encodings = ['utf-8', 'gbk', 'gb2312', 'latin-1']
+            encodings = [
+                'utf-8',        # Unicode encoding, most common
+                'utf-8-sig',    # UTF-8 with BOM
+                'utf-16',       # Unicode 16-bit encoding
+                'gbk',          # Chinese encoding
+                'gb2312',       # Subset of Chinese encoding
+                'gb18030',      # Superset of Chinese encoding
+                'big5',         # Traditional Chinese encoding
+                'iso-8859-1',   # Western European encoding
+                'ascii',        # ASCII encoding
+                'cp936',        # Microsoft Chinese encoding
+                'shift-jis',    # Japanese encoding
+                'euc-jp',       # Japanese encoding
+                'euc-kr',       # Korean encoding
+            ]
             content = None
             encoding_used = None
             

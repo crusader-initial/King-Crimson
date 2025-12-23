@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, UploadFile, File, Form
+from fastapi import APIRouter, Depends, UploadFile, File, Form, Body
 from sqlalchemy.orm import Session
 from typing import Optional
 from app.core.database import get_db
@@ -19,7 +19,7 @@ document_service = DocumentService()
 def upload_file(
     file: UploadFile = File(...),
     metadata: str = Form(None),
-    role_id: Optional[str] = Form(None),  # 从 Form 参数获取 role_id
+    role_id: str = Form(...),  # 从 Form 参数获取 role_id
     db: Session = Depends(get_db)
 ):
     """
@@ -36,9 +36,13 @@ def upload_file(
             pass
     
     # 优先从 Form 参数获取，其次从 metadata 获取
-    user_role_id = role_id or metadata_dict.get('role_id')
+    role_id = role_id or metadata_dict.get('role_id')
     
-    return file_service.upload_file(db, file, metadata_dict, user_role_id)
+    result = file_service.upload_file(db, file, metadata_dict, role_id)
+    return APIResponse.success(
+        data=result.get("data", {}),
+        message=result.get("message", "文件上传成功")
+    )
 
 @router.delete("/file/{filename}")
 def delete_file(
@@ -52,19 +56,13 @@ def delete_file(
     decoded_filename = unquote(filename)
     return file_service.delete_file(db, decoded_filename)
 
-@router.post("/documents/{document_id}/analyze")
+@router.post("/documents/analyze")
 def analyze_document(
-    document_id: int,
+    document_id: int = Body(...),
     db: Session = Depends(get_db)
 ):
     """
     分析文档接口
-    
-    Args:
-        document_id: 文档ID（路径参数）
-        
-    Returns:
-        APIResponse: 分析结果，包含完整的分析数据
     """
     try:
         document = document_service.analyze_document(db, document_id)
@@ -79,8 +77,6 @@ def analyze_document(
             },
             message="文档分析成功"
         )
-    except ValueError as e:
-        return APIResponse.error(code=404, message=str(e))
     except Exception as e:
         logger.error(f"分析文档失败: {str(e)}", exc_info=True)
         return APIResponse.error(code=500, message="文档分析失败")

@@ -36,7 +36,7 @@ class ProcessorFactory:
         :param file_path: 文件路径
         :return: DocumentResult 对象
         """
-        logger.info("Available processors: %s", list(cls._processors.keys()))
+        logger.info("可用处理器: %s", list(cls._processors.keys()))
         path = Path(file_path)
         
         # 使用 BaseFileProcessor 的类型检测方法

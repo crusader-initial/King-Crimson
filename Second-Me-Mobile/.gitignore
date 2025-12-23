@@ -6,3 +6,20 @@ yarn-debug.log*
 yarn-error.log*
 # MacOS
 .DS_Store
+
+# Android build files
+android/app/
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/app/release/
+android/app/debug/
+android/.idea/
+android/*.iml
+android/app/*.apk
+android/app/*.aab
+android/app/*.ap_
+*.apk
+*.aab
+*.ap_
