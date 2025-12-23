@@ -10,7 +10,7 @@ class InsightKernel:
     def __init__(self):
         self.generator = L0Generator()
         config = Config.from_env()
-        self.preferred_language = config.get("PREFER_LANGUAGE", "en")
+        self.preferred_language = config.get("PREFER_LANGUAGE", "zh_CN")
 
     def analyze(self, doc: DocumentDTO) -> Dict:
         """Generate document insight"""
@@ -52,7 +52,7 @@ class SummaryKernel:
     def __init__(self):
         self.generator = L0Generator()
         config = Config.from_env()
-        self.preferred_language = config.get("PREFER_LANGUAGE", "en")
+        self.preferred_language = config.get("PREFER_LANGUAGE", "zh_CN")
 
     def analyze(self, doc: DocumentDTO, insight: str = "") -> Dict:
         """Generate document summary"""

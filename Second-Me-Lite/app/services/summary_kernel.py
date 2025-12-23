@@ -11,7 +11,7 @@ class SummaryKernel:
     
     def __init__(self):
         self.generator = L0Generator()
-        self.preferred_language = "ch_zh"
+        self.preferred_language = "zh_CN"
     
     def analyze(self, doc: Document, insight: str) -> Dict:
         """

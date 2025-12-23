@@ -24,3 +24,25 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+class DatabaseSession:
+    """Database session context manager"""
+    @staticmethod
+    def session():
+        """Return a database session context manager"""
+        class SessionContext:
+            def __init__(self):
+                self.db = SessionLocal()
+            
+            def __enter__(self):
+                return self.db
+            
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                if exc_type:
+                    self.db.rollback()
+                else:
+                    self.db.commit()
+                self.db.close()
+        
+        return SessionContext()

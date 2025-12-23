@@ -1,5 +1,5 @@
 """
-L1 knowledge retriever service
+L1知识检索服务
 """
 import logging
 import json
@@ -7,6 +7,7 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy import text
 from app.services.embedding_service import EmbeddingService
 from app.core.database import SessionLocal
+from app.models.l1 import L1Shade
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ def get_latest_global_bio(role_id: Optional[str] = None) -> Optional[GlobalBio]:
 
 
 class L1KnowledgeRetriever:
-    """L1 knowledge retriever"""
+    """L1知识检索器"""
 
     def __init__(
         self,
@@ -95,12 +96,12 @@ class L1KnowledgeRetriever:
         max_shades: int = 3,
     ):
         """
-        init L1 knowledge retriever
+        初始化L1知识检索器
 
         Args:
-            embedding_service: Embedding service instance
-            similarity_threshold: only return contents whose similarity bigger than this value
-            max_shades: the maximum number of return shades
+            embedding_service: 嵌入向量服务实例
+            similarity_threshold: 仅返回相似度大于此值的内容
+            max_shades: 返回shades的最大数量
         """
         self.embedding_service = embedding_service
         self.similarity_threshold = similarity_threshold
@@ -108,43 +109,67 @@ class L1KnowledgeRetriever:
 
     def retrieve(self, query: str, role_id: Optional[str] = None) -> str:
         """
-        search related L1 shades
+        搜索相关的L1 shades
 
         Args:
-            query: query content
-            role_id: optional role ID to get role-specific global bio
+            query: 查询内容
+            role_id: 可选的角色ID，用于获取特定角色的全局传记
 
         Returns:
-            str: structured knowledge content, or empty string if no relevant knowledge found
+            str: 结构化的知识内容，如果未找到相关知识则返回空字符串
         """
         try:
-            # get global bio shades
-            global_bio = get_latest_global_bio(role_id=role_id)
-            if not global_bio or not global_bio.shades:
-                logger.info("Global Bio not found or Shades is empty")
+            # 直接查询 l1_shades 表
+            if not role_id:
+                logger.info("未提供 role_id，无法查询 shades")
                 return ""
+            
+            db = SessionLocal()
+            try:
+                # 先获取该 role_id 的最新版本号
+                max_version_result = db.query(L1Shade.version).filter(
+                    L1Shade.role_id == role_id
+                ).order_by(L1Shade.version.desc()).first()
+                
+                if not max_version_result:
+                    logger.info(f"未找到 role_id={role_id} 的 Shades")
+                    return ""
+                
+                max_version = max_version_result[0]
+                
+                # 根据 role_id 和最新版本号查询 shades
+                shades = db.query(L1Shade).filter(
+                    L1Shade.role_id == role_id,
+                    L1Shade.version == max_version
+                ).all()
+                
+                if not shades:
+                    logger.info(f"未找到 role_id={role_id} 版本={max_version} 的 Shades")
+                    return ""
+            finally:
+                db.close()
 
-            # get query embedding
+            # 获取查询的嵌入向量
             query_embedding = self.embedding_service.get_embedding(query)
             if not query_embedding:
-                logger.error("Failed to get embedding for query text")
+                logger.error("获取查询文本的嵌入向量失败")
                 return ""
 
-            # get all shades' embeddings
+            # 获取所有shades的嵌入向量
             shade_embeddings = []
-            for shade in global_bio.shades:
+            for shade in shades:
                 shade_text = (
-                    f"{shade.get('title', '')} - {shade.get('description', '')}"
+                    f"{shade.name or ''} - {shade.desc_third_view or ''}"
                 )
                 embedding = self.embedding_service.get_embedding(shade_text)
                 if embedding:
                     shade_embeddings.append((shade, embedding))
 
             if not shade_embeddings:
-                logger.info("No available Shades embeddings found")
+                logger.info("未找到可用的Shades嵌入向量")
                 return ""
 
-            # calculate similarity and sort
+            # 计算相似度并排序
             similar_shades = []
             for shade, embedding in shade_embeddings:
                 similarity = self.embedding_service.calculate_similarity(
@@ -153,29 +178,29 @@ class L1KnowledgeRetriever:
                 if similarity >= self.similarity_threshold:
                     similar_shades.append((shade, similarity))
 
-            # sort according to similarity and limit the number of returned shades
+            # 根据相似度排序并限制返回的shades数量
             similar_shades.sort(key=lambda x: x[1], reverse=True)
             similar_shades = similar_shades[: self.max_shades]
 
             if not similar_shades:
                 return ""
 
-            # structured output
+            # 结构化输出
             shade_parts = []
             for shade, similarity in similar_shades:
-                shade_text = f"Shade: {shade.get('title', '')}\n"
-                shade_text += f"Description: {shade.get('description', '')}\n"
+                shade_text = f"Shade: {shade.name or ''}\n"
+                shade_text += f"Description: {shade.desc_third_view or ''}\n"
                 shade_text += f"Similarity: {similarity:.2f}"
                 shade_parts.append(shade_text)
 
             return "\n\n".join(shade_parts)
 
         except Exception as e:
-            logger.error(f"L1 knowledge retrieval failed: {str(e)}")
+            logger.error(f"L1知识检索失败: {str(e)}")
             return ""
 
 
-# create default L1 retriever instance
+# 创建默认的L1检索器实例
 default_l1_retriever = L1KnowledgeRetriever(
     embedding_service=EmbeddingService(), similarity_threshold=0.7, max_shades=3
 )

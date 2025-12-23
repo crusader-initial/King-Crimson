@@ -7,9 +7,10 @@ from app.core.database import engine, Base
 from app.core.config import settings
 # 导入所有模型以确保表被创建
 from app.models import Document, Chunk, ChatHistory, Load, StatusBiography, Role
+from app.models.l1 import L1Version, L1Bio, L1Shade, L1Cluster, L1ChunkTopic
 
 # 导入所有路由
-from app.api import health, chat, files, users, biography
+from app.api import health, chat, files, users, biography, kernel
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -22,6 +23,7 @@ app.include_router(chat.router, prefix="/api", tags=["聊天"])
 app.include_router(files.router, prefix="/api", tags=["文件管理"])
 app.include_router(users.router, prefix="/api", tags=["用户管理"])
 app.include_router(biography.router, prefix="/api", tags=["传记管理"])
+app.include_router(kernel.router, prefix="/api/kernel", tags=["内核服务"])
 
 @app.get("/")
 def read_root():

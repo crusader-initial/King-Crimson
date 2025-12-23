@@ -19,7 +19,7 @@ class IntentType(Enum):
 
 def select_language_desc(
     preferred_language,
-    default_desc="Identify the language of the provided Hint. Your response must be in the same language.",
+    default_desc="识别所提供提示的语言。你们的回答必须是同一种语言。",
 ):
     custom_desc = "You must respond in {}."
     if isinstance(preferred_language, str) and "/" in preferred_language:
@@ -166,7 +166,7 @@ class TokenTextSplitter(TextSplitter):
 
     def _cut_meaningless_head_tail(self, text: str) -> str:
         # Only split when there are multiple newlines, as parsing of PDF/Word often contains false newlines
-        sentences = re.split("\. |! |\? |。|！|？|\n+ *\n+", text)
+        sentences = re.split(r"\. |! |\? |。|！|？|\n+ *\n+", text)
         if len(sentences) < 2:
             return text
         head = sentences[0]
@@ -735,3 +735,60 @@ def get_summarize_title_keywords(responses):
             logging.warning("JSON parsing failed, returning empty list")
             results.append(("", "", []))
     return results
+
+
+def serialize_value(value: Any) -> Any:
+    """
+    Serialize a value for JSON encoding, converting numpy arrays and other non-serializable types
+    
+    Args:
+        value: Value to serialize
+        
+    Returns:
+        JSON-serializable value
+    """
+    import numpy as np
+    from enum import Enum
+    from types import MappingProxyType
+    
+    # Handle None
+    if value is None:
+        return None
+    
+    # Handle numpy types
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    elif isinstance(value, (np.integer, np.floating)):
+        return value.item()
+    
+    # Handle Enum types - convert to their value
+    if isinstance(value, Enum):
+        return value.value
+    
+    # Handle mappingproxy (read-only dict view) - convert to regular dict
+    if isinstance(value, MappingProxyType):
+        return {k: serialize_value(v) for k, v in value.items()}
+    
+    # Handle dict
+    if isinstance(value, dict):
+        return {k: serialize_value(v) for k, v in value.items()}
+    
+    # Handle list/tuple
+    if isinstance(value, (list, tuple)):
+        return [serialize_value(item) for item in value]
+    
+    # Handle objects with to_dict method
+    if hasattr(value, 'to_dict'):
+        return serialize_value(value.to_dict())
+    
+    # Handle objects with to_json method (like Bio class)
+    if hasattr(value, 'to_json'):
+        return serialize_value(value.to_json())
+    
+    # Handle objects with __dict__ (but not classes - classes have mappingproxy)
+    # Only serialize instances, not classes themselves
+    if hasattr(value, '__dict__') and not isinstance(value, type):
+        return serialize_value(value.__dict__)
+    
+    # Fallback: return as-is (for primitives like str, int, float, bool)
+    return value

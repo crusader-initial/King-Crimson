@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.schemas import ChatRequest
 from app.services.L1 import default_l1_retriever
+from app.services.knowledge_service import default_retriever
 from app.services.role_service import RoleService
 
 # 系统提示词模板
@@ -98,40 +99,26 @@ class KnowledgeEnhancedStrategy(SystemPromptStrategy):
         knowledge_sections = []
         user_message = self.get_user_message(request)
         
-        # 如果可用，从元数据中获取配置
-        # 注意：L0 检索暂时禁用，只启用 L1
-        enable_l1_retrieval = False
+        # 从元数据中获取 role_id
         role_id = None
-        
         if hasattr(request, 'metadata') and request.metadata:
-            enable_l1_retrieval = request.metadata.get('enable_l1_retrieval', False)
             role_id = request.metadata.get('role_id')
         
-        # 如果角色存在，角色配置具有优先级
+        # 如果角色存在，从角色表读取配置并执行检索
         if role_id and db:
             role, error, status = RoleService.get_role_by_uuid(db, role_id)
             if role and status == 200:
-                # L0 检索暂时禁用
-                # if role.enable_l0_retrieval:
-                #     l0_knowledge = default_retriever.retrieve(user_message)
-                #     if l0_knowledge:
-                #         knowledge_sections.append(f"Role knowledge:\n{l0_knowledge}")
+                # L0 检索
+                if role.enable_l0_retrieval:
+                    l0_knowledge = default_retriever.retrieve(user_message)
+                    if l0_knowledge:
+                        knowledge_sections.append(f"参考知识:\n{l0_knowledge}")
+                
+                # L1 检索
                 if role.enable_l1_retrieval:
                     l1_knowledge = default_l1_retriever.retrieve(user_message, role_id=role_id)
                     if l1_knowledge:
-                        knowledge_sections.append(f"Reference shades:\n{l1_knowledge}")
-        else:
-            # L0 检索暂时禁用
-            # if enable_l0_retrieval:
-            #     l0_knowledge = default_retriever.retrieve(user_message)
-            #     if l0_knowledge:
-            #         knowledge_sections.append(f"Reference knowledge:\n{l0_knowledge}")
-            
-            # 如果启用，检索 L1 知识
-            if enable_l1_retrieval:
-                l1_knowledge = default_l1_retriever.retrieve(user_message, role_id=role_id)
-                if l1_knowledge:
-                    knowledge_sections.append(f"Reference shades:\n{l1_knowledge}")
+                        knowledge_sections.append(f"参考维度:\n{l1_knowledge}")
             
         if knowledge_sections:
             if len(base_prompt) == 0:
@@ -141,7 +128,6 @@ class KnowledgeEnhancedStrategy(SystemPromptStrategy):
             logger.info(f"KnowledgeEnhancedStrategy (with knowledge): {prompt}")
             return prompt
             
-        # logger.info(f"KnowledgeEnhancedStrategy (no knowledge found): {base_prompt}")
         return base_prompt
 
 

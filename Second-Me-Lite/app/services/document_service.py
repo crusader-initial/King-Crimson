@@ -7,7 +7,7 @@ from app.services.summary_kernel import SummaryKernel
 from app.services.load_service import LoadService
 from app.services.role_service import RoleService
 from app.core.schemas import BioInfo
-from typing import Optional
+from typing import Optional, List, Dict
 import logging
 import json
 
@@ -129,4 +129,94 @@ class DocumentService:
                 db.commit()
         except Exception as e:
             logger.error(f"更新分析状态失败: {str(e)}", exc_info=True)
+    def list_documents(self, db: Session) -> List[Document]:
+        """
+        get all doc list
+        Args:
+            db: 数据库会话
+        Returns:
+            List[Document]: doc object list
+        """
+        return db.query(Document).all()
+
+    def list_documents_with_l0(self, db: Session) -> List[Dict]:
+        """
+        get all docs' L0 data
+        Args:
+            db: 数据库会话
+        Returns:
+            List[Dict]: list of dict of docs with L0 data
+        """
+        # 1. get all basic data
+        documents = self.list_documents(db)
+        logger.info(f"list_documents len: {len(documents)}")
+
+        # 2. each doc L0
+        documents_with_l0 = []
+        for doc in documents:
+            # 将 Document 对象转换为字典
+            doc_dict = {
+                "id": doc.id,
+                "name": doc.name,
+                "title": doc.title,
+                "mime_type": doc.mime_type,
+                "raw_content": doc.raw_content,
+                "create_time": doc.create_time,
+                "update_time": doc.update_time,
+                "insight": doc.insight,
+                "summary": doc.summary,
+                "keywords": doc.keywords,
+                "role_id": doc.role_id,
+            }
+            # L0 数据已经在 insight 和 summary 字段中，不需要单独获取
+            documents_with_l0.append(doc_dict)
+
+        return documents_with_l0
+
+    def get_document_embedding(self, db: Session, document_id: int) -> Optional[List[float]]:
+        """
+        获取文档的嵌入向量
+        Args:
+            db: 数据库会话
+            document_id: 文档ID
+        Returns:
+            文档的嵌入向量，如果不存在则返回 None
+        """
+        # 注意：Document 模型可能没有 embedding 字段，需要根据实际情况调整
+        # 这里假设从 chunks 中获取第一个 chunk 的 embedding 作为文档 embedding
+        from app.models.document import Chunk
+        chunk = db.query(Chunk).filter(Chunk.document_id == document_id).first()
+        if chunk is not None and chunk.embedding is not None:
+            return chunk.embedding.tolist() if hasattr(chunk.embedding, 'tolist') else list(chunk.embedding)
+        return None
+
+    def get_document_chunks(self, db: Session, document_id: int) -> List:
+        """
+        获取文档的所有 chunks
+        Args:
+            db: 数据库会话
+            document_id: 文档ID
+        Returns:
+            chunks 列表
+        """
+        from app.models.document import Chunk
+        return db.query(Chunk).filter(Chunk.document_id == document_id).all()
+
+    def get_chunk_embeddings_by_document_id(self, db: Session, document_id: int) -> Dict[int, List[float]]:
+        """
+        获取文档所有 chunks 的嵌入向量
+        Args:
+            db: 数据库会话
+            document_id: 文档ID
+        Returns:
+            {chunk_id: embedding} 字典
+        """
+        from app.models.document import Chunk
+        chunks = db.query(Chunk).filter(Chunk.document_id == document_id).all()
+        embeddings = {}
+        for chunk in chunks:
+            if chunk is not None and chunk.embedding is not None:
+                embedding = chunk.embedding.tolist() if hasattr(chunk.embedding, 'tolist') else list(chunk.embedding)
+                embeddings[chunk.id] = embedding
+        return embeddings
 

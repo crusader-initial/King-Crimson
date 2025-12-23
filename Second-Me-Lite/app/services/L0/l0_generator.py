@@ -32,7 +32,7 @@ from app.services.L0.prompts import (
 logger = logging.getLogger(__name__)
 
 class L0Generator:
-    def __init__(self, preferred_language="ch_zh"):
+    def __init__(self, preferred_language="zh_CN"):
         """初始化 L0Generator，设置语言偏好
         
         参数:

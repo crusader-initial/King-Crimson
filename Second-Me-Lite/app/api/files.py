@@ -36,7 +36,7 @@ def upload_file(
             pass
     
     # 优先从 Form 参数获取，其次从 metadata 获取
-    user_role_id = role_id or metadata_dict.get('role_id') or metadata_dict.get('load_id') or metadata_dict.get('user_id')
+    user_role_id = role_id or metadata_dict.get('role_id')
     
     return file_service.upload_file(db, file, metadata_dict, user_role_id)
 

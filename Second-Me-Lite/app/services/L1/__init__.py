@@ -1,5 +1,5 @@
 """
-L1 related services
+L1相关服务
 """
 from app.services.L1.knowledge_retriever import (
     L1KnowledgeRetriever,

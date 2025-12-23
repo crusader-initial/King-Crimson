@@ -15,7 +15,7 @@ class L0KnowledgeRetriever:
     def __init__(
         self,
         embedding_service: EmbeddingService,
-        similarity_threshold: float = 0.7,
+        similarity_threshold: float = 0.5,
         max_chunks: int = 3,
     ):
         """
@@ -70,5 +70,5 @@ class L0KnowledgeRetriever:
 
 # create default L0 retriever instance
 default_retriever = L0KnowledgeRetriever(
-    embedding_service=EmbeddingService(), similarity_threshold=0.7, max_chunks=3
+    embedding_service=EmbeddingService(), similarity_threshold=0.5, max_chunks=3
 )
