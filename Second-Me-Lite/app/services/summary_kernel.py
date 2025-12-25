@@ -31,15 +31,12 @@ class SummaryKernel:
             file_info = FileInfo(
                 data_type=doc.mime_type,
                 filename=doc.name,
-                content=doc.raw_content or "",
+                content="",
                 file_content={"content": doc.raw_content} if doc.raw_content else None
             )
             
             # 构建 SummarizerInput
-            summarizer_input = SummarizerInput(
-                file_info=file_info,
-                insight=insight
-            )
+            summarizer_input = SummarizerInput(file_info=file_info,insight=insight)
             
             # 调用 LLM 生成 summary
             summary_result = self.generator.summarizer(summarizer_input)

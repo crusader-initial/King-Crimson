@@ -1,6 +1,7 @@
 from typing import List, Optional, Dict
 from sqlalchemy import select
 from .dto.chunk_dto import ChunkDTO
+from app.models.document import Chunk
 import logging
 
 logger = logging.getLogger(__name__)
@@ -37,8 +38,8 @@ class DocumentRepository(BaseRepository[Document]):
         """search all chunks of the specified document"""
         with self._db.session() as session:
             chunks = (
-                session.query(ChunkModel)
-                .filter(ChunkModel.document_id == document_id)
+                session.query(Chunk)
+                .filter(Chunk.document_id == document_id)
                 .all()
             )
             return [
@@ -55,7 +56,7 @@ class DocumentRepository(BaseRepository[Document]):
                 for chunk in chunks
             ]
 
-    def save_chunk(self, chunk: ChunkModel) -> ChunkModel:
+    def save_chunk(self, chunk: Chunk) -> Chunk:
         """save chunk"""
         with self._db.session() as session:
             session.add(chunk)
@@ -74,7 +75,7 @@ class DocumentRepository(BaseRepository[Document]):
         try:
             with self._db.session() as session:
                 chunk = (
-                    session.query(ChunkModel).filter(ChunkModel.id == chunk_id).first()
+                    session.query(Chunk).filter(Chunk.id == chunk_id).first()
                 )
                 if chunk:
                     chunk.has_embedding = has_embedding
@@ -100,8 +101,8 @@ class DocumentRepository(BaseRepository[Document]):
         try:
             with self._db.session() as session:
                 document = (
-                    session.query(DocumentModel)
-                    .filter(DocumentModel.id == document_id)
+                    session.query(self.model)
+                    .filter(self.model.id == document_id)
                     .first()
                 )
                 if document:

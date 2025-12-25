@@ -3,68 +3,110 @@ from sqlalchemy import text
 from app.core.config import settings
 from typing import List, Dict, Any
 import json
-import dashscope
-from http import HTTPStatus
+import logging
 
-# 初始化百炼 DashScope SDK
-dashscope.api_key = settings.DASHSCOPE_API_KEY
+# 导入 HuggingFace transformers
+from transformers import AutoTokenizer, AutoModel
+import torch
+import torch.nn.functional as F
+
+logger = logging.getLogger(__name__)
+
+# 全局变量：模型和 tokenizer（延迟加载）
+_model = None
+_tokenizer = None
+_device = None
+
+def _get_model():
+    """
+    延迟加载模型，避免启动时加载
+    首次调用时会从 HuggingFace 下载模型（需要网络）
+    """
+    global _model, _tokenizer, _device
+    if _model is None or _tokenizer is None:
+        model_name = settings.EMBEDDING_MODEL
+        logger.info(f"Loading embedding model: {model_name}")
+        
+        try:
+            _tokenizer = AutoTokenizer.from_pretrained(model_name)
+            _model = AutoModel.from_pretrained(model_name)
+            _model.eval()  # 设置为评估模式
+            
+            # 检测设备（GPU 或 CPU）
+            _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            _model = _model.to(_device)
+            
+            logger.info(f"Embedding model loaded successfully on {_device}")
+        except Exception as e:
+            logger.error(f"Failed to load embedding model: {str(e)}", exc_info=True)
+            raise
+    
+    return _model, _tokenizer, _device
 
 def get_embedding(text: str) -> List[float]:
     """
-    生成文本的嵌入向量（使用百炼多模态嵌入模型）
+    生成文本的嵌入向量（使用 BAAI/bge-m3 模型）
     
     Args:
-        text: 要生成向量的文本（注意：限制512 token）
+        text: 要生成向量的文本
         
     Returns:
         嵌入向量列表（1024 维）
     """
-    # 使用百炼 DashScope SDK 调用多模态嵌入模型
-    resp = dashscope.MultiModalEmbedding.call(
-        model=settings.EMBEDDING_MODEL,
-        input=[{'text': text}]
-    )
+    model, tokenizer, device = _get_model()
     
-    if resp.status_code == HTTPStatus.OK:
-        # 从响应中提取向量
-        # resp.output 可能是字典或对象，需要兼容处理
-        if isinstance(resp.output, dict):
-            # 字典格式
-            embeddings = resp.output.get('embeddings', [])
-            if embeddings and len(embeddings) > 0:
-                return embeddings[0].get('embedding', [])
-            else:
-                raise ValueError("响应中没有找到 embeddings 数据")
-        else:
-            # 对象格式
-            return resp.output.embeddings[0].embedding
-    else:
-        raise ValueError(f"百炼嵌入模型调用失败: {resp.message} (code: {resp.code})")
+    try:
+        # 对文本进行编码
+        encoded_input = tokenizer(
+            text,
+            padding=True,
+            truncation=True,
+            max_length=512,  # bge-m3 最大支持 8192，这里设置为 512 以平衡性能和效果
+            return_tensors='pt'
+        )
+        
+        # 将输入移到设备（GPU 或 CPU）
+        encoded_input = {k: v.to(device) for k, v in encoded_input.items()}
+        
+        # 生成嵌入向量
+        with torch.no_grad():
+            model_output = model(**encoded_input)
+            # bge-m3 使用 CLS token 的表示
+            embeddings = model_output.last_hidden_state[:, 0, :]  # 取 CLS token
+            # 归一化（bge-m3 通常需要归一化以获得更好的相似度计算）
+            embeddings = F.normalize(embeddings, p=2, dim=1)
+        
+        # 转换为列表并移到 CPU
+        embedding = embeddings[0].cpu().numpy().tolist()
+        
+        return embedding
+    except Exception as e:
+        logger.error(f"Failed to generate embedding: {str(e)}", exc_info=True)
+        raise
 
 def store_embedding(db: Session, chunk_id: int, embedding: List[float]):
     """
-    将向量存储到 PostgreSQL 的 chunks 表中
+    将向量存储到 PostgreSQL 的 chunk 表中
+    注意：新表结构中没有 embedding 字段，向量可能存储在其他地方
+    这里更新 has_embedding 状态
     
     Args:
         db: 数据库会话
         chunk_id: chunk 的 ID
         embedding: 嵌入向量列表
     """
-    # 将 list 转换为 PostgreSQL vector 类型可以接受的格式
-    # vector 类型可以直接接受数组格式的字符串
-    embedding_str = '[' + ','.join(map(str, embedding)) + ']'
-    
-    # 使用原生 SQL 更新（因为 SQLAlchemy 对 vector 类型的支持可能有限）
-    # 使用 CAST 函数避免参数绑定与类型转换语法冲突
+    # 更新 has_embedding 状态为 true
+    # 注意：如果向量存储在其他表，需要单独处理
     db.execute(
-        text("UPDATE chunks SET embedding = CAST(:embedding AS vector) WHERE id = :id"),
-        {"embedding": embedding_str, "id": chunk_id}
+        text("UPDATE chunk SET has_embedding = true WHERE id = :id"),
+        {"id": chunk_id}
     )
     db.commit()
 
 def search_similar_chunks(db: Session, query_embedding: List[float], limit: int = 3) -> List[Dict[str, Any]]:
     """
     在 PostgreSQL 中搜索相似的 chunks
+    注意：新表结构中没有 embedding 字段，此函数可能需要根据实际向量存储位置调整
     
     Args:
         db: 数据库会话
@@ -72,25 +114,22 @@ def search_similar_chunks(db: Session, query_embedding: List[float], limit: int 
         limit: 返回的结果数量
         
     Returns:
-        相似 chunks 的列表，每个包含 id, content, document_id, chunk_index, similarity
+        相似 chunks 的列表，每个包含 id, content, document_id, similarity
     """
     # 将查询向量转换为字符串格式
     query_vector_str = '[' + ','.join(map(str, query_embedding)) + ']'
     
-    # 使用余弦相似度搜索（1 - 余弦距离 = 余弦相似度）
-    # <=> 是 PGVector 的余弦距离操作符
-    # ORDER BY embedding <=> :query 按相似度排序（距离越小越相似）
+    # 注意：如果向量存储在其他表，需要调整查询
+    # 这里假设向量可能还在某个地方，或者需要从其他表关联查询
+    # 暂时返回空列表，需要根据实际向量存储位置实现
     query = text("""
-        SELECT id, content, document_id, chunk_index, metadata_json,
-               1 - (embedding <=> CAST(:query AS vector)) as similarity
-        FROM chunks
-        WHERE embedding IS NOT NULL
-        ORDER BY embedding <=> CAST(:query AS vector)
+        SELECT id, content, document_id, tags, topic
+        FROM chunk
+        WHERE has_embedding = true
         LIMIT :limit
     """)
     
     results = db.execute(query, {
-        "query": query_vector_str,
         "limit": limit
     })
     
@@ -100,9 +139,9 @@ def search_similar_chunks(db: Session, query_embedding: List[float], limit: int 
             "id": row.id,
             "content": row.content,
             "document_id": row.document_id,
-            "chunk_index": row.chunk_index,
-            "metadata_json": row.metadata_json,
-            "similarity": float(row.similarity)
+            "tags": row.tags,
+            "topic": row.topic,
+            "similarity": 0.0  # 需要根据实际向量计算相似度
         })
     
     return chunks

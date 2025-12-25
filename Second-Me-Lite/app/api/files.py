@@ -4,6 +4,8 @@ from typing import Optional
 from app.core.database import get_db
 from app.services.file_service import FileService
 from app.services.document_service import DocumentService
+from app.services.chunk_service import DocumentChunker, ChunkService
+from app.core.config import Config
 from app.core.response import APIResponse
 import json
 import logging
@@ -58,26 +60,78 @@ def delete_file(
 
 @router.post("/documents/analyze")
 def analyze_document(
-    document_id: int = Body(...),
     db: Session = Depends(get_db)
 ):
     """
-    分析文档接口
+    批量分析所有未分析的文档接口
+    
+    自动查找状态为 INITIALIZED 或 FAILED 的文档进行分析
     """
     try:
-        document = document_service.analyze_document(db, document_id)
+        results = document_service.analyze_all_documents(db)
         return APIResponse.success(
-            data={
-                "id": document.id,
-                "name": document.name,
-                "analyze_status": document.analyze_status,
-                "insight": document.insight,
-                "summary": document.summary,
-                "keywords": document.keywords
-            },
-            message="文档分析成功"
+            data=results,
+            message=f"文档分析完成：成功 {results['success_count']} 个，失败 {results['failed_count']} 个"
         )
     except Exception as e:
-        logger.error(f"分析文档失败: {str(e)}", exc_info=True)
-        return APIResponse.error(code=500, message="文档分析失败")
+        logger.error(f"批量分析文档失败: {str(e)}", exc_info=True)
+        return APIResponse.error(code=500, message="批量分析文档失败")
+
+@router.post("/documents/chunks/process")
+def process_all_chunks(
+    db: Session = Depends(get_db)
+):
+    """Process chunks for all documents in batch"""
+    try:
+        config = Config.from_env()
+        chunker = DocumentChunker(
+            chunk_size=int(config.get("DOCUMENT_CHUNK_SIZE", 500)),
+            overlap=int(config.get("DOCUMENT_CHUNK_OVERLAP", 50)),
+        )
+
+        documents = document_service.list_documents(db)
+        processed, failed = 0, 0
+
+        chunk_service = ChunkService()
+        for doc in documents:
+            try:
+                if not doc.raw_content:
+                    logger.warning(f"Document {doc.id} has no content, skipping...")
+                    failed += 1
+                    continue
+
+                # Split into chunks and save
+                chunks = chunker.split(doc.raw_content)
+                for chunk in chunks:
+                    chunk.document_id = doc.id
+                    chunk_service.save_chunk(chunk)
+
+                processed += 1
+                logger.info(
+                    f"Document {doc.id} processed: {len(chunks)} chunks created"
+                )
+
+            except Exception as e:
+                logger.error(f"Failed to process document {doc.id}: {str(e)}")
+                failed += 1
+
+        # Commit all changes
+        db.commit()
+
+        return APIResponse.success(
+            data={
+                "total": len(documents),
+                "processed": processed,
+                "failed": failed,
+            },
+            message=f"Chunk processing completed: {processed} processed, {failed} failed"
+        )
+
+    except Exception as e:
+        logger.error(f"Chunk processing failed: {str(e)}", exc_info=True)
+        db.rollback()
+        return APIResponse.error(
+            code=500,
+            message=f"Chunk processing failed: {str(e)}"
+        )
 

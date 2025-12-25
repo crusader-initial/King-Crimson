@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, CheckConstraint
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, CheckConstraint, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from datetime import datetime
@@ -83,17 +83,15 @@ class Document(Base):
 
 class Chunk(Base):
     """文档切片表"""
-    __tablename__ = "chunks"
+    __tablename__ = "chunk"
 
     id = Column(Integer, primary_key=True, index=True)
-    document_id = Column(Integer, ForeignKey("document.id", ondelete="CASCADE"), nullable=True)
+    document_id = Column(Integer, ForeignKey("document.id", ondelete="CASCADE"), nullable=False)
     content = Column(Text, nullable=False)
-    chunk_index = Column(Integer, nullable=True)
-    # PGVector 向量列，维度为 1024（multimodal-embedding-v1）
-    embedding = Column(Vector(1024), nullable=True)
-    # 使用 PostgreSQL 的 JSONB 类型
-    metadata_json = Column(JSONB, nullable=True)
-    created_at = Column(DateTime, nullable=True)
+    has_embedding = Column(Boolean, default=False, nullable=False)
+    tags = Column(Text, nullable=True)
+    topic = Column(String(255), nullable=True)
+    create_time = Column(DateTime, default=datetime.utcnow, nullable=False)
     
     document = relationship("Document", back_populates="chunks")
 

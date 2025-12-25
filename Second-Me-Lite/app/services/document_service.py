@@ -1,12 +1,7 @@
 from sqlalchemy.orm import Session
 from app.models.document import Document
-from app.models.status_biography import StatusBiography
-from app.models.load import Load
 from app.services.insight_kernel import InsightKernel
 from app.services.summary_kernel import SummaryKernel
-from app.services.load_service import LoadService
-from app.services.role_service import RoleService
-from app.core.schemas import BioInfo
 from typing import Optional, List, Dict
 import logging
 import json
@@ -20,105 +15,39 @@ class DocumentService:
         self.insight_kernel = InsightKernel()
         self.summary_kernel = SummaryKernel()
     
-    def analyze_document(self, db: Session, document_id: int) -> Optional[Document]:
+    def analyze_document(self, db: Session, document: Document) -> Optional[Document]:
         """
         分析文档
         
         Args:
             db: 数据库会话
-            document_id: 文档ID
-            
-        Returns:
-            Document: 分析后的文档对象
-            
-        Raises:
-            ValueError: 文档不存在
-            Exception: 分析失败
+            document: 文档对象
         """
         try:
-            # 获取文档
-            document = db.query(Document).filter(Document.id == document_id).first()
-            if not document:
-                raise ValueError(f"Document not found with id: {document_id}")
-            
-            # 获取 BioInfo（根据文档关联的 role_id）
-            bio_info = self._get_bio_info(db, document)
-            
-            # 生成 insight
-            insight_text, title, insight_json = self.insight_kernel.analyze(document, bio_info)
+            # 生成 insight（bio_info 在 insight_kernel 内部获取）
+            insight_result = self.insight_kernel.analyze(db, document)
             
             # 生成 summary（使用已生成的 insight）
-            summary_result = self.summary_kernel.analyze(document, insight_text)
+            summary_result = self.summary_kernel.analyze(document, insight_result.get("insight", ""))
             
             # 更新数据库
-            document.insight = json.dumps(insight_json, ensure_ascii=False)
-            document.summary = json.dumps(summary_result, ensure_ascii=False)
+            document.title = json.dumps(insight_result.get("title", ""),ensure_ascii= False)
+            document.insight = json.dumps(insight_result.get("insight", ""), ensure_ascii=False)
+            document.summary = json.dumps(summary_result.get("summary", ""), ensure_ascii=False)
             document.keywords = json.dumps(summary_result.get("keywords", []), ensure_ascii=False)
             document.analyze_status = 'SUCCESS'
             
             db.commit()
             db.refresh(document)
             
-            logger.info(f"文档分析成功: {document_id}")
+            logger.info(f"文档分析成功: {document.id}")
             return document
             
-        except ValueError as e:
-            logger.error(f"Document {document_id} not found: {str(e)}")
-            raise
         except Exception as e:
-            logger.error(f"Error analyzing document {document_id}: {str(e)}", exc_info=True)
+            logger.error(f"Error analyzing document {document.id}: {str(e)}", exc_info=True)
             # 更新状态为失败
-            self._update_analyze_status_failed(db, document_id)
+            self._update_analyze_status_failed(db, document.id)
             raise
-    
-    def _get_bio_info(self, db: Session, document: Document) -> BioInfo:
-        """
-        获取用户传记信息（根据文档关联的 role_id）
-        从 status_biography 和 role 表中获取数据
-        
-        Args:
-            db: 数据库会话
-            document: 文档对象
-            
-        Returns:
-            BioInfo: 用户传记信息
-        """
-        try:
-            # 从文档获取 role_id
-            if not document.role_id:
-                logger.warning(f"文档 {document.id} 未关联角色，返回空的 BioInfo")
-                return BioInfo()
-            
-            role_id = document.role_id  # document.role_id 是 Integer 类型
-            
-            # 1. 获取状态传记（从 status_biography 表）
-            # 注意：status_biography.role_id 是 varchar(36)，需要转换为字符串进行比较
-            status_bio = db.query(StatusBiography).filter(
-                StatusBiography.role_id == str(role_id)
-            ).first()
-            
-            # 2. 获取角色信息（从 role 表）
-            from app.models.role import Role
-            role = db.query(Role).filter(Role.id == str(role_id)).first()  # role.id 是 String(36) 类型
-            if not role:
-                logger.warning(f"未找到角色 {role_id}，返回空的 BioInfo")
-                return BioInfo()
-            
-            # 3. 构建 BioInfo（所有字段都从 status_biography 和 role 表中获取）
-            global_bio = status_bio.content_third_view if status_bio else ""
-            status_bio_content = status_bio.content if status_bio else ""
-            about_me = role.description or ""  # 从 role.description 获取，不是 loads.description
-            
-            logger.info(f"成功获取文档 {document.id} 的 BioInfo，role_id: {role_id}")
-            return BioInfo(
-                global_bio=global_bio,
-                status_bio=status_bio_content,
-                about_me=about_me
-            )
-            
-        except Exception as e:
-            logger.error(f"获取 BioInfo 失败: {str(e)}", exc_info=True)
-            return BioInfo()
     
     def _update_analyze_status_failed(self, db: Session, document_id: int):
         """更新分析状态为失败"""
@@ -129,6 +58,76 @@ class DocumentService:
                 db.commit()
         except Exception as e:
             logger.error(f"更新分析状态失败: {str(e)}", exc_info=True)
+    
+    def find_unanalyzed_documents(self, db: Session) -> List[Document]:
+        """
+        查找所有未分析的文档（状态为 INITIALIZED 或 FAILED）
+        
+        Args:
+            db: 数据库会话
+            
+        Returns:
+            List[Document]: 未分析的文档列表
+        """
+        return db.query(Document).filter(
+            Document.analyze_status.in_(['INITIALIZED', 'FAILED'])
+        ).all()
+    
+    def analyze_all_documents(self, db: Session) -> Dict:
+        """
+        批量分析所有未分析的文档
+        
+        Args:
+            db: 数据库会话
+            
+        Returns:
+            Dict: 包含成功和失败统计的结果
+                - total: 总文档数
+                - success: 成功分析的文档列表
+                - failed: 失败的文档列表
+                - success_count: 成功数量
+                - failed_count: 失败数量
+        """
+        unanalyzed_docs = self.find_unanalyzed_documents(db)
+        
+        results = {
+            "total": len(unanalyzed_docs),
+            "success": [],
+            "failed": [],
+            "success_count": 0,
+            "failed_count": 0
+        }
+        
+        if results["total"] == 0:
+            logger.info("没有需要分析的文档")
+            return results
+        
+        logger.info(f"开始批量分析 {results['total']} 个文档")
+        
+        for doc in unanalyzed_docs:
+            try:
+                # 直接传递 Document 对象，避免重复查询
+                analyzed_doc = self.analyze_document(db, doc)
+                results["success"].append({
+                    "id": analyzed_doc.id,
+                    "name": analyzed_doc.name,
+                    "analyze_status": analyzed_doc.analyze_status
+                })
+                results["success_count"] += 1
+                logger.info(f"文档 {doc.id} ({doc.name}) 分析成功")
+            except Exception as e:
+                results["failed"].append({
+                    "id": doc.id,
+                    "name": doc.name,
+                    "error": str(e)
+                })
+                results["failed_count"] += 1
+                logger.error(f"文档 {doc.id} ({doc.name}) 分析失败: {str(e)}")
+                continue
+        
+        logger.info(f"批量分析完成：成功 {results['success_count']} 个，失败 {results['failed_count']} 个")
+        return results
+    
     def list_documents(self, db: Session) -> List[Document]:
         """
         get all doc list
@@ -176,18 +175,15 @@ class DocumentService:
     def get_document_embedding(self, db: Session, document_id: int) -> Optional[List[float]]:
         """
         获取文档的嵌入向量
+        注意：新表结构中没有 embedding 字段，向量可能存储在其他地方
         Args:
             db: 数据库会话
             document_id: 文档ID
         Returns:
             文档的嵌入向量，如果不存在则返回 None
         """
-        # 注意：Document 模型可能没有 embedding 字段，需要根据实际情况调整
-        # 这里假设从 chunks 中获取第一个 chunk 的 embedding 作为文档 embedding
-        from app.models.document import Chunk
-        chunk = db.query(Chunk).filter(Chunk.document_id == document_id).first()
-        if chunk is not None and chunk.embedding is not None:
-            return chunk.embedding.tolist() if hasattr(chunk.embedding, 'tolist') else list(chunk.embedding)
+        # 新表结构中没有 embedding 字段，需要根据实际向量存储位置调整
+        # 如果向量存储在其他表，需要从那里查询
         return None
 
     def get_document_chunks(self, db: Session, document_id: int) -> List:
@@ -205,18 +201,14 @@ class DocumentService:
     def get_chunk_embeddings_by_document_id(self, db: Session, document_id: int) -> Dict[int, List[float]]:
         """
         获取文档所有 chunks 的嵌入向量
+        注意：新表结构中没有 embedding 字段，向量可能存储在其他地方
         Args:
             db: 数据库会话
             document_id: 文档ID
         Returns:
             {chunk_id: embedding} 字典
         """
-        from app.models.document import Chunk
-        chunks = db.query(Chunk).filter(Chunk.document_id == document_id).all()
-        embeddings = {}
-        for chunk in chunks:
-            if chunk is not None and chunk.embedding is not None:
-                embedding = chunk.embedding.tolist() if hasattr(chunk.embedding, 'tolist') else list(chunk.embedding)
-                embeddings[chunk.id] = embedding
-        return embeddings
+        # 新表结构中没有 embedding 字段，需要根据实际向量存储位置调整
+        # 如果向量存储在其他表，需要从那里查询
+        return {}
 

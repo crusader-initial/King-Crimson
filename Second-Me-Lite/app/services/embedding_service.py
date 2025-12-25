@@ -14,12 +14,12 @@ logger = logging.getLogger(__name__)
 class ChunkDTO:
     """Data Transfer Object for Chunk"""
     def __init__(self, id: int, content: str, document_id: Optional[int] = None, 
-                 chunk_index: Optional[int] = None, metadata_json: Optional[dict] = None):
+                 tags: Optional[str] = None, topic: Optional[str] = None):
         self.id = id
         self.content = content
         self.document_id = document_id
-        self.chunk_index = chunk_index
-        self.metadata_json = metadata_json or {}
+        self.tags = tags
+        self.topic = topic
 
 
 class EmbeddingService:
@@ -85,8 +85,8 @@ class EmbeddingService:
                     id=result['id'],
                     content=result['content'],
                     document_id=result.get('document_id'),
-                    chunk_index=result.get('chunk_index'),
-                    metadata_json=result.get('metadata_json')
+                    tags=result.get('tags'),
+                    topic=result.get('topic')
                 )
                 chunks.append((chunk_dto, result['similarity']))
             

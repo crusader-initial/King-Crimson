@@ -304,23 +304,15 @@ class FileService:
         
         start = 0
         text_len = len(content)
-        chunk_index = 0
         
         while start < text_len:
             end = start + chunk_size
             chunk_text = content[start:end]
             
-            metadata = {
-                "filename": document.name,
-                "document_id": document.id,
-                "chunk_index": chunk_index
-            }
-            
             db_chunk = Chunk(
                 document_id=document.id,
                 content=chunk_text,
-                chunk_index=chunk_index,
-                metadata_json=metadata
+                has_embedding=False
             )
             db.add(db_chunk)
             db.flush()
@@ -328,7 +320,6 @@ class FileService:
             chunk_texts.append(chunk_text)
             
             start += (chunk_size - overlap)
-            chunk_index += 1
         
         db.commit()
         

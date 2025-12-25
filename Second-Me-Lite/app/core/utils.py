@@ -41,10 +41,9 @@ def cal_upperbound(
     model_name: str = "gpt-3.5-turbo",
 ) -> int:
     """
-    :param model_limit: Maximum token count for the underlying model call
-    :param tolerance: Error tolerance buffer
-    :param raw: system prompt and raw content
-    :return:
+    计算大模型调用时「可输入内容的最大 token 上限」，
+    本质是基于模型的总 token 限制、预留的容错 / 生成空间，扣减已有内容的 token 数，
+    最终得出剩余可填充内容的 token 上限，避免模型调用因 token 超限报错。
     """
     if model_name is not None:
         if model_name in tiktoken.model.MODEL_TO_ENCODING:
@@ -709,6 +708,35 @@ class TokenParagraphSplitter(TextSplitter):
         return _splits
 
 
+def fix_json_missing_quotes(json_str: str) -> str:
+    """
+    修复 JSON 字符串中缺失引号的字符串值
+    
+    Args:
+        json_str: 可能格式不正确的 JSON 字符串
+        
+    Returns:
+        修复后的 JSON 字符串
+    """
+    # 修复 title 和 summary 字段缺失引号的问题
+    for field in ['title', 'summary']:
+        # 匹配 "field": value 格式，其中 value 不以引号、[、{开头
+        # 使用非贪婪匹配，找到下一个字段的开始位置（"field":）或结束符（}）
+        pattern = rf'("{field}":\s*)([^",\[\{{\n].*?)(?=,\s*"(?:title|summary|keywords)":|,?\s*\}})'
+        def add_quotes(match):
+            prefix = match.group(1)
+            value = match.group(2)
+            # 去除末尾可能的逗号和空白
+            value = value.rstrip(',').strip()
+            # 转义值中的引号
+            value = value.replace('"', '\\"')
+            return f'{prefix}"{value}"'
+        
+        json_str = re.sub(pattern, add_quotes, json_str, flags=re.DOTALL)
+    
+    return json_str
+
+
 def get_summarize_title_keywords(responses):
     # Clean LLM generated content to obtain summarized text titles, abstracts, and keywords
     pattern = re.compile(r"\{.*(\}|\]|\,)", re.DOTALL)
@@ -726,7 +754,9 @@ def get_summarize_title_keywords(responses):
                 content = answer.strip().strip(",")
                 content += "]" * (content.count("[") - content.count("]"))
                 content += "}" * (content.count("{") - content.count("}"))
-                d = json.loads(res)
+                # 修复 JSON 格式问题（如缺失引号）
+                content = fix_json_missing_quotes(content)
+                d = json.loads(content)
                 results.append(
                     (d.get("title", ""), d.get("summary", ""), d.get("keywords", []))
                 )

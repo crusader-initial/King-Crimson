@@ -36,7 +36,7 @@ class L0Generator:
         """初始化 L0Generator，设置语言偏好
         
         参数:
-            preferred_language: 用于生成的语言，默认为 English
+            preferred_language: 用于生成的语言，默认为 zh_CN
         """
         self.preferred_language = preferred_language
 
@@ -64,7 +64,7 @@ class L0Generator:
         request_timeout: int,
         file_content: Dict[str, Any],
         max_tokens: int = 3000,
-        filter=None,
+        filter=equidistant_filter,
     ) -> tuple[str, str]:
         """处理文档内容以生成洞察
         
@@ -80,42 +80,14 @@ class L0Generator:
         返回:
             包含 (insight, title) 的元组
         """
-        user_info = """# Hint # 
-                    "{hint}"
-
-                    # Content #
-                    "{content}"
-
-                    # User Instruction #
-                    "{user_input}"
-                    """
-        user_input = "Here are some content and their hint. Please follow the WorkFlow and do your best. Ensure that your response is in a parseable JSON format.  "
+        user_info = """# 提示 # "{hint}" # 内容 # "{content}" # 用户指令 # "{user_input}" """
+        user_input = "以下是一些内容和提示。请按照工作流程，尽你所能。确保您的响应是可解析的JSON格式。 "
         language_desc = select_language_desc(self.preferred_language)
-        
-        # 如果未提供 filter，使用默认的 equidistant_filter
-        if filter is None:
-            filter = equidistant_filter
 
         segment_list = [self.lf_prompt_doc_overview, self.lf_prompt_doc_breakdown]
         messages_list = []
         max_retry_list = []
         alarm_mesg_list = []
-        
-        # 提取模型名称（去除openai/前缀），避免重复处理
-        model_name_clean = self.model_name.replace("openai/", "")
-        
-        # 预处理文档内容：正确处理字符串或列表类型
-        raw_content = file_content.get("content", "") if file_content else ""
-        if isinstance(raw_content, list):
-            doc_content_raw = "\n".join(raw_content)
-        elif isinstance(raw_content, str):
-            doc_content_raw = raw_content
-        else:
-            doc_content_raw = str(raw_content) if raw_content else ""
-        
-        # 如果内容为空，记录警告
-        if not doc_content_raw.strip():
-            logger.warning("文档内容为空，可能导致生成结果不准确")
         
         for i in range(len(segment_list)):
             doc_parser_prompt = segment_list[i]
@@ -135,33 +107,23 @@ class L0Generator:
             text_splitter = TokenTextSplitter(
                 chunk_size=chunk_size,
                 chunk_overlap=0,
-                model_name=model_name_clean,
+                model_name=self.model_name.replace("openai/", ""),
             )
 
             # 将文档内容分割成多个块
+            doc_content_raw = file_content.get("content", "")
+            # doc_content_raw = "\n".join(tmp)
             content_chunks = text_splitter.split_text(doc_content_raw)
             
             # 从多个块中筛选出最相关的块
-            filtered_content = chunk_filter(
-                content_chunks, 
-                filter, 
-                filtered_chunks_n=chunk_num, 
-                separator="\n", 
-                spacer="\n"
-            )
+            filtered_content = chunk_filter(content_chunks, filter, filtered_chunks_n=chunk_num, separator="\n", spacer="\n")
             
             # 截断内容以确保不超过token限制
-            doc_content_final = get_safe_content_turncate(
-                filtered_content, 
-                model_name=model_name_clean, 
-                max_tokens=upper_bound
-            )
+            doc_content_final = get_safe_content_turncate(filtered_content, model_name=self.model_name.replace("openai/", ""), max_tokens=upper_bound)
 
             # 格式化用户输入内容
             user_content = user_info.format(
-                hint=content, 
-                content=doc_content_final, 
-                user_input=user_input
+                hint=content, content=doc_content_final, user_input=user_input
             )
             
             # 替换prompt中的占位符（如果存在）
@@ -249,43 +211,36 @@ class L0Generator:
         )
 
         bio = {
-            "global_bio": inputs.bio_info.global_bio.split("### Conclusion ###")[
-                -1
-            ].strip("\n ")
-            if inputs.bio_info.global_bio
-            else "User has no biography right now",
-            "status_bio": inputs.bio_info.status_bio.split(
-                "** User Activities Overview **"
-            )[-1]
-            .strip("** Physical and mental health status **")[0]
-            .strip("\n")
-            if inputs.bio_info.status_bio
-            else "",
+            "global_bio": inputs.bio_info.global_bio.split("### 结论 ###")[-1].strip("\n ")
+            if inputs.bio_info.global_bio else "用户目前没有传记",
+
+            "status_bio": inputs.bio_info.status_bio.split("** 用户活动概述 **")[-1].strip("** 身心健康状况 **")[0].strip("\n")
+            if inputs.bio_info.status_bio else "",
+
             "about_me": inputs.bio_info.about_me.strip("\n")
-            if inputs.bio_info.about_me
-            else "",
+            if inputs.bio_info.about_me else "",
         }
 
         text_len = len(self._tokenizer.encode(inputs.file_info.content))
 
         if text_len > 20 or inputs.file_info.file_content:
-            if datatype == DataType.IMAGE:
-                insight, title = self._insighter_image(
-                    bio=bio,
-                    content=inputs.file_info.content,
-                    max_retries=self.max_retries_summarize,
-                    request_timeout=30,
-                    file_content=inputs.file_info.file_content,
-                )
-            elif datatype == DataType.AUDIO:
-                insight, title = self._insighter_audio(
-                    bio=bio,
-                    content=inputs.file_info.content,
-                    max_retries=self.max_retries_summarize,
-                    request_timeout=45,
-                    file_content=inputs.file_info.file_content,
-                )
-            else:
+            # if datatype == DataType.IMAGE:
+            #     insight, title = self._insighter_image(
+            #         bio=bio,
+            #         content=inputs.file_info.content,
+            #         max_retries=self.max_retries_summarize,
+            #         request_timeout=30,
+            #         file_content=inputs.file_info.file_content,
+            #     )
+            # elif datatype == DataType.AUDIO:
+            #     insight, title = self._insighter_audio(
+            #         bio=bio,
+            #         content=inputs.file_info.content,
+            #         max_retries=self.max_retries_summarize,
+            #         request_timeout=45,
+            #         file_content=inputs.file_info.file_content,
+            #     )
+            # else:
                 insight, title = self._insighter_doc(
                     bio=bio,
                     content=inputs.file_info.content,
@@ -349,7 +304,7 @@ class L0Generator:
         request_timeout: int,
         max_retries: int,
         preferred_language: str,
-        filter=None,
+        filter=equidistant_filter,
     ) -> tuple[str, str, List[str]] or List[tuple[str, str, List[str]]]:
         """从内容生成标题、摘要和关键词
         
@@ -366,8 +321,8 @@ class L0Generator:
             包含 (title, summary, keywords) 的单个元组或元组列表
         """
         # 如果未提供 filter，使用默认的 equidistant_filter
-        if filter is None:
-            filter = equidistant_filter
+        # if filter is None:
+        #     filter = equidistant_filter
             
         upper_limit = 8192
         filtered_chunks_n = 14
@@ -392,8 +347,8 @@ class L0Generator:
                     {"role": "user", "content": prompt.format(**_request)},
                     {
                         "role": "system",
-                        "content": f"""User Preferred Language: {preferred_language}, you should use this language to generate the title, summary.
-                    Don't to start the summary section with sentences like "This document", "This text" or "This article", but describe the content directly.""",
+                        "content": f"""用户首选语言：{preferred_language}，您应该使用此语言生成标题和摘要。
+                    不要在摘要部分以"本文档"、"本文"或"本文章"等句子开头，而是直接描述内容。""",
                     },
                 ]
                 for _request in _requests
@@ -462,13 +417,7 @@ class L0Generator:
             # 基于采样的全文摘要方法
             # 保留开头和结尾，可以跳过中间部分。结尾对于公司签名和信息很有用，减少模型幻觉
             # 同时在结尾保留一个额外的块，以避免最终块过短导致信息不足的问题
-            use_content = chunk_filter(
-                splits,
-                filter,
-                filtered_chunks_n=filtered_chunks_n,
-                separator="\n",
-                spacer="\n……\n……\n……\n",
-            )
+            use_content = chunk_filter(splits,filter,filtered_chunks_n=filtered_chunks_n,separator="\n",spacer="\n……\n……\n……\n")
 
             requests.append(
                 {
@@ -546,11 +495,6 @@ class L0Generator:
                 title = filename
 
         t1 = time.time()
-        logger.warning(
-            "MarkdownChunkAPI summarize_title_abstract_keywords(): time spent %.2f seconds, title=%s, summary=%s",
-            t1 - t0,
-            title,
-            summary,
-        )
+        logger.warning("MarkdownChunkAPI summarize_title_abstract_keywords(): time spent %.2f seconds, title=%s, summary=%s",t1 - t0,title,summary)
 
         return {"title": title, "summary": summary, "keywords": keywords}

@@ -1,2 +1,16 @@
 venv/
-
+*.egg-info/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+.env
+.DS_Store
