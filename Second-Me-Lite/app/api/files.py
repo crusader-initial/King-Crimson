@@ -81,7 +81,7 @@ def analyze_document(
 def process_all_chunks(
     db: Session = Depends(get_db)
 ):
-    """Process chunks for all documents in batch"""
+    """批量处理所有文档的 chunks"""
     try:
         config = Config.from_env()
         chunker = DocumentChunker(
@@ -96,11 +96,11 @@ def process_all_chunks(
         for doc in documents:
             try:
                 if not doc.raw_content:
-                    logger.warning(f"Document {doc.id} has no content, skipping...")
+                    logger.warning(f"文档 {doc.id} 没有内容，跳过...")
                     failed += 1
                     continue
 
-                # Split into chunks and save
+                # 分割成 chunks 并保存
                 chunks = chunker.split(doc.raw_content)
                 for chunk in chunks:
                     chunk.document_id = doc.id
@@ -108,14 +108,14 @@ def process_all_chunks(
 
                 processed += 1
                 logger.info(
-                    f"Document {doc.id} processed: {len(chunks)} chunks created"
+                    f"文档 {doc.id} 处理完成: 创建了 {len(chunks)} 个 chunks"
                 )
 
             except Exception as e:
-                logger.error(f"Failed to process document {doc.id}: {str(e)}")
+                logger.error(f"处理文档 {doc.id} 失败: {str(e)}")
                 failed += 1
 
-        # Commit all changes
+        # 提交所有更改
         db.commit()
 
         return APIResponse.success(
@@ -124,14 +124,77 @@ def process_all_chunks(
                 "processed": processed,
                 "failed": failed,
             },
-            message=f"Chunk processing completed: {processed} processed, {failed} failed"
+            message=f"Chunk 处理完成: {processed} 个成功，{failed} 个失败"
         )
 
     except Exception as e:
-        logger.error(f"Chunk processing failed: {str(e)}", exc_info=True)
+        logger.error(f"Chunk 处理失败: {str(e)}", exc_info=True)
         db.rollback()
         return APIResponse.error(
             code=500,
-            message=f"Chunk processing failed: {str(e)}"
+            message=f"Chunk 处理失败: {str(e)}"
+        )
+
+@router.post("/documents/{document_id}/chunk/embedding")
+def process_document_embeddings(
+    document_id: int,
+    db: Session = Depends(get_db)
+):
+    """为指定文档的所有 chunks 处理 embeddings"""
+    try:
+        # 调用服务处理 embeddings
+        processed_chunks = document_service.generate_document_chunk_embeddings(
+            document_id
+        )
+
+        if not processed_chunks:
+            logger.warning(f"文档 {document_id} 没有找到 chunks")
+            return APIResponse.error(
+                message=f"文档 {document_id} 没有找到 chunks"
+            )
+
+        return APIResponse.success(
+            data={
+                "document_id": document_id,
+                "total_chunks": len(processed_chunks),
+                "processed_chunks": len(
+                    [c for c in processed_chunks if c.has_embedding]
+                ),
+            }
+        )
+
+    except Exception as e:
+        logger.error(
+            f"处理文档 {document_id} 的 embeddings 时出错: {str(e)}",
+            exc_info=True,
+        )
+        return APIResponse.error(
+            message=f"处理文档 {document_id} 的 embeddings 时出错: {str(e)}"
+        )
+
+@router.post("/documents/{document_id}/embedding")
+def process_document_embedding(
+    document_id: int,
+    db: Session = Depends(get_db)
+):
+    """处理文档级别的嵌入向量"""
+    try:
+        embedding = document_service.process_document_embedding(document_id)
+        if embedding is None:
+            return APIResponse.error(
+                message=f"Failed to process embedding for document {document_id}"
+            )
+
+        return APIResponse.success(
+            data={"document_id": document_id, "embedding_length": len(embedding)}
+        )
+
+    except ValueError as e:
+        logger.error(f"Document not found: {str(e)}")
+        return APIResponse.error(message=f"Document not found: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error processing document embedding: {str(e)}", exc_info=True)
+        return APIResponse.error(
+            message=f"Error processing document embedding: {str(e)}"
         )
 

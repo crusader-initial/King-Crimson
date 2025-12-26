@@ -178,9 +178,14 @@ class L1Generator:
             "timeout": 45,
         }
         # 直接使用 config.py 中的配置，参考 L0Generator
+        # 仅在此处补充 /v1，不影响其他服务
+        base_url = settings.OPENAI_BASE_URL.rstrip('/')
+        if not base_url.endswith('/v1'):
+            base_url = base_url + '/v1'
+        
         self.client = OpenAI(
             api_key=settings.CHAT_API_KEY,
-            base_url=settings.OPENAI_BASE_URL,
+            base_url=base_url,
         )
         self.model_name = settings.CHAT_MODEL
         self._top_p_adjusted = False  # 标记是否已调整top_p参数
@@ -287,9 +292,7 @@ class L1Generator:
 
         system_prompt = GLOBAL_BIO_SYSTEM_PROMPT
 
-        global_bio_message = self.__build_message(
-            system_prompt, user_prompt, language=self.preferred_language
-        )
+        global_bio_message = self.__build_message(system_prompt, user_prompt, language=self.preferred_language)
 
         response = self._call_llm_with_retry(global_bio_message)
         third_perspective_result = response.choices[0].message.content

@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.response import APIResponse
 from app.core.utils import serialize_value
-from app.services.L1.l1_manager import generate_l1_from_l0, store_l1_data
+from app.core.schemas import GenerateStatusBioRequest, GenerateL1Request
+from app.services.L1.l1_manager import generate_l1_from_l0, store_l1_data, generate_and_store_status_bio
 import logging
 
 router = APIRouter()
@@ -11,25 +12,26 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/l1/global/generate")
-def generate_l1(db: Session = Depends(get_db)):
+def generate_l1(request: GenerateL1Request, db: Session = Depends(get_db)):
     """Generate L1 data from L0 data and store
+    
+    Args:
+        request: 包含 role_id 的请求对象
+        db: 数据库会话
     
     Returns:
         APIResponse with version number and generated data
     """
     try:
         # 1. Generate L1 data
-        result = generate_l1_from_l0()
+        result = generate_l1_from_l0(role_id=request.role_id)
 
         if result is None:
             return APIResponse.error("No valid L1 data generated")
 
         # 2. Store L1 data
-        # 使用从文档中提取的 role_id，如果为 None 则使用默认值或报错
-        role_id = result.role_id
-        if not role_id:
-            logger.warning("未找到有效的 role_id，L1 数据可能无法正确存储")
-        version_number = store_l1_data(db, result, role_id=role_id)
+        # 使用请求中传入的 role_id
+        version_number = store_l1_data(db, result, role_id=request.role_id)
 
         # 3. Convert result to serializable format
         serializable_result = serialize_value(result.to_dict())
@@ -46,4 +48,45 @@ def generate_l1(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error generating L1: {str(e)}", exc_info=True)
         return APIResponse.error(code=500, message=str(e))
+
+
+@router.post("/l1/status_bio/generate")
+def generate_status_biography(request: GenerateStatusBioRequest):
+    """Generate status biography for a specific role
+    
+    Args:
+        request: 包含 role_id 的请求对象
+    """
+    try:
+        # Call l1_manager method to generate and store status biography
+        status_bio = generate_and_store_status_bio(role_id=request.role_id)
+
+        if status_bio is None:
+            return APIResponse.error(code=500, message=f"状态传记生成失败 (role_id={request.role_id})")
+
+        # Build response data
+        response_data = {
+            "content": status_bio.content_second_view,
+            "content_third_view": status_bio.content_third_view,
+            "summary": status_bio.summary_second_view,
+            "summary_third_view": status_bio.summary_third_view,
+            "shades": [
+                {
+                    "name": shade.name,
+                    "aspect": shade.aspect,
+                    "icon": shade.icon,
+                    "desc_third_view": shade.desc_third_view,
+                    "content_third_view": shade.content_third_view,
+                    "desc_second_view": shade.desc_second_view,
+                    "content_second_view": shade.content_second_view,
+                }
+                for shade in status_bio.shades_list
+            ],
+        }
+
+        return APIResponse.success(data=response_data)
+    
+    except Exception as e:
+        logger.error(f"Error generating status biography: {str(e)}", exc_info=True)
+        return APIResponse.error(code=500, message=f"生成状态传记失败: {str(e)}")
 

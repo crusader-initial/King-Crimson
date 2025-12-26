@@ -97,3 +97,11 @@ class AnalyzeDocumentRequest(BaseModel):
     """文档分析请求模型"""
     document_id: int  # 文档ID
 
+class GenerateStatusBioRequest(BaseModel):
+    """生成状态传记请求模型"""
+    role_id: str  # 角色ID，用于获取该角色的所有文档并生成状态传记
+
+class GenerateL1Request(BaseModel):
+    """生成L1数据请求模型"""
+    role_id: str  # 角色ID，用于获取该角色的所有文档并生成L1数据
+

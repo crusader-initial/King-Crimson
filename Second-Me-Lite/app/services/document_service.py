@@ -1,7 +1,9 @@
 from sqlalchemy.orm import Session
-from app.models.document import Document
+from app.models.document import Document, Chunk
 from app.services.insight_kernel import InsightKernel
 from app.services.summary_kernel import SummaryKernel
+from app.services.document_repository import DocumentRepository
+from app.services.embedding_service import EmbeddingService, ChunkDTO
 from typing import Optional, List, Dict
 import logging
 import json
@@ -14,6 +16,8 @@ class DocumentService:
     def __init__(self):
         self.insight_kernel = InsightKernel()
         self.summary_kernel = SummaryKernel()
+        self._repository = DocumentRepository()
+        self.embedding_service = EmbeddingService()
     
     def analyze_document(self, db: Session, document: Document) -> Optional[Document]:
         """
@@ -138,17 +142,21 @@ class DocumentService:
         """
         return db.query(Document).all()
 
-    def list_documents_with_l0(self, db: Session) -> List[Dict]:
+    def list_documents_with_l0(self, db: Session, role_id: Optional[str] = None) -> List[Dict]:
         """
         get all docs' L0 data
         Args:
             db: 数据库会话
+            role_id: 可选的角色ID，如果提供则只返回该角色的文档
         Returns:
             List[Dict]: list of dict of docs with L0 data
         """
         # 1. get all basic data
-        documents = self.list_documents(db)
-        logger.info(f"list_documents len: {len(documents)}")
+        if role_id:
+            documents = db.query(Document).filter(Document.role_id == role_id).all()
+        else:
+            documents = self.list_documents(db)
+        logger.info(f"list_documents len: {len(documents)}" + (f" (role_id={role_id})" if role_id else ""))
 
         # 2. each doc L0
         documents_with_l0 = []
@@ -174,41 +182,158 @@ class DocumentService:
 
     def get_document_embedding(self, db: Session, document_id: int) -> Optional[List[float]]:
         """
-        获取文档的嵌入向量
-        注意：新表结构中没有 embedding 字段，向量可能存储在其他地方
+        get doc embedding
         Args:
             db: 数据库会话
-            document_id: 文档ID
+            document_id (int): doc ID
         Returns:
-            文档的嵌入向量，如果不存在则返回 None
+            Optional[List[float]]: doc embedding
+        Raises:
+            Exception: error occurred
         """
-        # 新表结构中没有 embedding 字段，需要根据实际向量存储位置调整
-        # 如果向量存储在其他表，需要从那里查询
-        return None
+        try:
+            from app.core.vector import get_document_embedding as _get_document_embedding
+            return _get_document_embedding(db, document_id)
+        except Exception as e:
+            logger.error(f"Error getting document embedding: {str(e)}")
+            raise
 
-    def get_document_chunks(self, db: Session, document_id: int) -> List:
+    def get_document_chunks(self, db: Session, document_id: int) -> List[ChunkDTO]:
         """
-        获取文档的所有 chunks
+        get chunks result
         Args:
-            db: 数据库会话
-            document_id: 文档ID
+            db: 数据库会话（保留以保持兼容性，但当前实现不使用）
+            document_id (int): doc ID
         Returns:
-            chunks 列表
+            List[ChunkDTO]: doc chunks list，each ChunkDTO include embedding info
         """
-        from app.models.document import Chunk
-        return db.query(Chunk).filter(Chunk.document_id == document_id).all()
+        try:
+            document = self._repository.find_one(document_id=document_id)
+            if not document:
+                logger.info(f"Document not found with id: {document_id}")
+                return []
+
+            chunks = self._repository.find_chunks(document_id=document_id)
+            logger.info(f"Found {len(chunks)} chunks for document {document_id}")
+
+            for chunk in chunks:
+                chunk.length = len(chunk.content) if chunk.content else 0
+                if chunk.has_embedding:
+                    chunk.embedding = (
+                        self.embedding_service.get_chunk_embedding_by_chunk_id(chunk.id)
+                    )
+
+            return chunks
+
+        except Exception as e:
+            logger.error(f"Error getting chunks for document {document_id}: {str(e)}")
+            return []
 
     def get_chunk_embeddings_by_document_id(self, db: Session, document_id: int) -> Dict[int, List[float]]:
         """
-        获取文档所有 chunks 的嵌入向量
-        注意：新表结构中没有 embedding 字段，向量可能存储在其他地方
+        获取文档所有 chunks 的嵌入向量（从 pgvector 的 chunk_embedding 表读取）
         Args:
             db: 数据库会话
             document_id: 文档ID
         Returns:
             {chunk_id: embedding} 字典
         """
-        # 新表结构中没有 embedding 字段，需要根据实际向量存储位置调整
-        # 如果向量存储在其他表，需要从那里查询
-        return {}
+        from app.core.vector import get_chunk_embedding
+        from app.models.document import Chunk
+        
+        # 获取文档的所有 chunks
+        chunks = db.query(Chunk).filter(Chunk.document_id == document_id).all()
+        
+        # 从 pgvector 读取每个 chunk 的向量
+        chunk_embeddings = {}
+        for chunk in chunks:
+            embedding = get_chunk_embedding(db, chunk.id)
+            if embedding:
+                chunk_embeddings[chunk.id] = embedding
+        
+        return chunk_embeddings
+
+    def generate_document_chunk_embeddings(self, document_id: int) -> List[ChunkDTO]:
+        """
+        handle chunks and embeddings
+        Args:
+            document_id (int): ID
+        Returns:
+            List[ChunkDTO]: chunks list
+        Raises:
+            Exception: error occurred
+        """
+        try:
+            chunks_dtos = self._repository.find_chunks(document_id)
+            if not chunks_dtos:
+                logger.info(f"No chunks found for document {document_id}")
+                return []
+
+            # handle embeddings (store_embedding 已经更新了数据库中的 has_embedding 状态)
+            processed_chunks = self.embedding_service.generate_chunk_embeddings(
+                chunks_dtos
+            )
+
+            # Update document embedding status
+            all_processed = all(c.has_embedding for c in processed_chunks)
+            if all_processed and processed_chunks:
+                self._repository.update_embedding_status(document_id, 'SUCCESS')
+            else:
+                self._repository.update_embedding_status(document_id, 'INITIALIZED')
+
+            return processed_chunks
+
+        except Exception as e:
+            logger.error(f"Error processing chunk embeddings: {str(e)}")
+            # Update document status to failed
+            try:
+                self._repository.update_embedding_status(document_id, 'FAILED')
+            except:
+                pass
+            raise
+
+    def process_document_embedding(self, document_id: int) -> Optional[List[float]]:
+        """
+        handle doc level embedding
+        Args:
+            document_id (int): doc ID
+        Returns:
+            Optional[List[float]]: doc embedding
+        Raises:
+            ValueError: doc not exist
+            Exception: error occurred
+        """
+        try:
+            document = self._repository.find_one(document_id)
+            if not document:
+                raise ValueError(f"Document not found with id: {document_id}")
+
+            if not document.raw_content:
+                logger.warning(
+                    f"Document {document_id} has no content to process embedding"
+                )
+                self._repository.update_embedding_status(
+                    document_id, 'FAILED'
+                )
+                return None
+
+            # gen doc embedding
+            embedding = self.embedding_service.generate_document_embedding(document)
+            if embedding is not None:
+                self._repository.update_embedding_status(
+                    document_id, 'SUCCESS'
+                )
+            else:
+                self._repository.update_embedding_status(
+                    document_id, 'FAILED'
+                )
+
+            return embedding
+
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.error(f"Error processing document embedding: {str(e)}")
+            self._repository.update_embedding_status(document_id, 'FAILED')
+            raise
 

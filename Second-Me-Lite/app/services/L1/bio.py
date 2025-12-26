@@ -462,19 +462,13 @@ class ShadeInfo:
     ):
         self.desc_second_view = domainDesc
         self.content_second_view = domainContent
-        timelime_dict = {
-            timelime.ref_memory_id: timelime for timelime in self.timelines
-        }
+        timelime_dict = {timelime.ref_memory_id: timelime for timelime in self.timelines}
         for timeline in domainTimeline:
             ref_memory_id = timeline.get("refMemoryId", None)
             if not (ref_memory_id and ref_memory_id in timelime_dict):
-                logging.error(
-                    f"具有refMemoryId {ref_memory_id}的时间线已存在，跳过"
-                )
+                logging.error(f"具有refMemoryId {ref_memory_id}的时间线已存在，跳过")
                 continue
-            timelime_dict[ref_memory_id].add_second_view(
-                timeline.get("description", "")
-            )
+            timelime_dict[ref_memory_id].add_second_view(timeline.get("description", ""))
 
     def _preview_(self, second_view: bool = False):
         if second_view:

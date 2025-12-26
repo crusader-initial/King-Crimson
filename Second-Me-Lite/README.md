@@ -50,7 +50,29 @@ cp .env.example .env
 *   **CHROMA_***: 配置你的远程 ChromaDB 地址 (e.g. `http://localhost:8000`)。
 *   **OPENAI_***: 配置你的 LLM API Key 和 Base URL。
 
-### 3. 运行服务
+### 3. 数据库迁移
+
+确保 PostgreSQL 数据库已安装 pgvector 扩展，然后执行以下 SQL 脚本创建向量表：
+
+```bash
+# 创建文档级别的向量表
+psql -U postgres -d second_me_lite -f migrations/create_document_embedding_table.sql
+
+# 创建 chunk 级别的向量表
+psql -U postgres -d second_me_lite -f migrations/create_chunk_embedding_table.sql
+```
+
+或者直接在 PostgreSQL 客户端中执行以下迁移文件中的 SQL 语句：
+- `migrations/create_document_embedding_table.sql` - 文档级别的向量表
+- `migrations/create_chunk_embedding_table.sql` - chunk 级别的向量表
+
+**注意**: 
+- 文档向量表 (`document_embedding`) 用于存储文档级别的嵌入向量
+- Chunk 向量表 (`chunk_embedding`) 用于存储 chunk 级别的嵌入向量
+- 两者都使用 HuggingFace BAAI/bge-m3 模型生成，向量维度为 1024
+- 所有向量数据都存储在 PostgreSQL 的 pgvector 扩展中
+
+### 4. 运行服务
 
 ```bash
 python run.py
@@ -58,7 +80,7 @@ python run.py
 
 服务将在 `http://localhost:8001` 启动。
 
-### 4. API 使用指南
+### 5. API 使用指南
 
 访问 Swagger UI 文档: `http://localhost:8000/docs`
 
@@ -73,6 +95,33 @@ python run.py
 *   **DELETE /api/file/{filename}**: 文件删除接口
     *   功能: 删除文件记录、相关 chunks、向量数据以及物理文件
     *   参数: `filename`（文件名）
+
+*   **POST /api/documents/analyze**: 批量分析所有未分析的文档接口
+    *   功能: 自动查找状态为 INITIALIZED 或 FAILED 的文档进行分析
+    *   响应: 返回分析结果统计
+
+*   **POST /api/documents/chunks/process**: 批量处理所有文档的 chunks
+    *   功能: 为所有文档生成 chunks 并保存到数据库
+    *   响应: 返回处理结果统计
+
+*   **POST /api/documents/{document_id}/chunk/embedding**: 为指定文档的所有 chunks 处理 embeddings
+    *   功能: 为指定文档的所有 chunks 生成嵌入向量
+    *   参数: `document_id`（文档ID）
+    *   响应: 返回处理的 chunks 统计信息
+    *   说明:
+        - 为文档的所有 chunks 批量生成嵌入向量（使用 HuggingFace BAAI/bge-m3 模型）
+        - 向量存储到 PostgreSQL 的 `chunk_embedding` 表中（使用 pgvector 扩展）
+        - 同时更新 `chunk` 表的 `has_embedding` 状态为 `true`
+        - 向量维度为 1024（bge-m3 模型的维度）
+
+*   **POST /api/documents/{document_id}/embedding**: 处理文档级别的嵌入向量
+    *   功能: 为指定文档生成文档级别的嵌入向量（使用文档的 raw_content，使用 HuggingFace BAAI/bge-m3 模型）
+    *   参数: `document_id`（文档ID）
+    *   响应: 返回文档ID和嵌入向量长度
+    *   说明: 
+        - 如果文档内容过长，会自动分块处理，然后对分块的 embeddings 求平均
+        - 向量存储到 PostgreSQL 的 `document_embedding` 表中（使用 pgvector 扩展）
+        - 向量维度为 1024（bge-m3 模型的维度）
 
 #### 用户管理接口
 
@@ -106,6 +155,26 @@ python run.py
     *   响应: 返回更新结果
 
 #### 状态传记接口
+
+*   **POST /api/l1/status_bio/generate**: 生成状态传记
+    *   功能: 根据角色ID获取该角色的所有文档，自动生成状态传记并存储到数据库
+    *   请求体: JSON 格式
+        ```json
+        {
+            "role_id": "角色ID（必填）"
+        }
+        ```
+    *   响应: 返回生成的状态传记内容，包括：
+        - `content`: 第二视角内容
+        - `content_third_view`: 第三视角内容
+        - `summary`: 第二视角摘要
+        - `summary_third_view`: 第三视角摘要
+        - `shades`: 特征列表（包含名称、方面、图标、描述和内容等）
+    *   说明: 
+        - 该接口会获取指定 `role_id` 的所有文档（包含L0数据）
+        - 基于这些文档自动生成状态传记
+        - 生成的状态传记会存储到 `status_biography` 表中，并关联到指定的 `role_id`
+        - 如果该 `role_id` 已存在状态传记，会先删除旧的再创建新的
 
 *   **PUT /api/status-biography/{role_id}**: 创建或更新状态传记（upsert）
     *   功能: 根据角色ID创建或更新状态传记记录

@@ -104,26 +104,6 @@ def extract_notes_from_documents(documents, db) -> tuple[List[Note], list]:
         if isinstance(create_time, datetime):
             create_time = create_time.strftime("%Y-%m-%d %H:%M:%S")
 
-        # 获取文档的洞察和摘要（可能是 JSON 字符串）
-        insight_data = doc.get("insight", {})
-        summary_data = doc.get("summary", {})
-        
-        if insight_data is None:
-            insight_data = {}
-        elif isinstance(insight_data, str):
-            try:
-                insight_data = json.loads(insight_data) if insight_data else {}
-            except (json.JSONDecodeError, TypeError):
-                insight_data = {}
-        
-        if summary_data is None:
-            summary_data = {}
-        elif isinstance(summary_data, str):
-            try:
-                summary_data = json.loads(summary_data) if summary_data else {}
-            except (json.JSONDecodeError, TypeError):
-                summary_data = {}
-
         # 构建Note对象
         note = Note(
             noteId=doc_id,
@@ -145,10 +125,10 @@ def extract_notes_from_documents(documents, db) -> tuple[List[Note], list]:
                 for chunk in chunks
                 if all_chunk_embeddings.get(chunk.id)
             ],
-            title=insight_data.get("title", ""),
-            summary=summary_data.get("summary", ""),
-            insight=insight_data.get("insight", ""),
-            tags=summary_data.get("keywords", []),
+            title=doc.get("title", ""),
+            summary=doc.get("summary", ""),
+            insight=doc.get("insight", ""),
+            tags=doc.get("keywords", []),
         )
         notes_list.append(note)
         memory_list.append({"memoryId": str(doc_id), "embedding": doc_embedding})
@@ -156,28 +136,24 @@ def extract_notes_from_documents(documents, db) -> tuple[List[Note], list]:
     return notes_list, memory_list
 
 
-def generate_l1_from_l0() -> L1GenerationResult:
-    """从L0数据生成L1级别的知识表示"""
+def generate_l1_from_l0(role_id: Optional[str] = None) -> L1GenerationResult:
+    """从L0数据生成L1级别的知识表示
+    
+    Args:
+        role_id: 可选的角色ID，如果提供则只处理该角色的文档
+    
+    Returns:
+        L1GenerationResult: L1生成结果
+    """
     l1_generator = L1Generator()
 
     # 1. 准备数据
     with DatabaseSession.session() as db:
-        documents = document_service.list_documents_with_l0(db)
-        logger.info(f"找到 {len(documents)} 个包含L0数据的文档")
+        documents = document_service.list_documents_with_l0(db, role_id=role_id)
+        logger.info(f"找到 {len(documents)} 个包含L0数据的文档" + (f" (role_id={role_id})" if role_id else ""))
 
         # 2. 提取笔记和记忆
         notes_list, memory_list = extract_notes_from_documents(documents, db)
-        
-        # 2.1 从文档中提取 role_id（使用第一个非空的 role_id，如果有多个不同的 role_id 则使用最常见的）
-        role_id = None
-        if documents:
-            # 提取所有非空的 role_id，并转换为字符串（因为 L1Bio.role_id 是 String 类型）
-            role_ids = [str(doc.get("role_id")) for doc in documents if doc.get("role_id") is not None]
-            if role_ids:
-                # 使用最常见的 role_id，如果都不同则使用第一个
-                role_id_counts = Counter(role_ids)
-                role_id = role_id_counts.most_common(1)[0][0]
-                logger.info(f"从文档中提取到 role_id: {role_id} (共 {len(role_ids)} 个文档有 role_id)")
 
     if not notes_list or not memory_list:
         logger.error("未找到有效的文档进行处理")
@@ -186,9 +162,7 @@ def generate_l1_from_l0() -> L1GenerationResult:
     try:
         # 3. 生成L1数据
         # 3.1 生成主题
-        clusters = l1_generator.gen_topics_for_shades(
-            old_cluster_list=[], old_outlier_memory_list=[], new_memory_list=memory_list
-        )
+        clusters = l1_generator.gen_topics_for_shades(old_cluster_list=[], old_outlier_memory_list=[], new_memory_list=memory_list)
         logger.info(f"生成聚类: {bool(clusters)}")
 
         # 3.2 生成chunk topics
@@ -205,9 +179,7 @@ def generate_l1_from_l0() -> L1GenerationResult:
         logger.info(f"生成了 {len(shades)} 个shades")
         merged_shades = l1_generator.merge_shades(shades_merge_infos)
         logger.info(f"合并shades成功: {merged_shades.success}")
-        logger.info(
-            f"合并后的shades数量: {len(merged_shades.merge_shade_list) if merged_shades.success else 0}"
-        )
+        logger.info(f"合并后的shades数量: {len(merged_shades.merge_shade_list) if merged_shades.success else 0}")
 
         # 将 merge_shade_list 转换为 ShadeInfo 字典列表
         # merge_shade_list 包含 {"shadeIds": [...], "centerEmbedding": [...]}
@@ -219,17 +191,13 @@ def generate_l1_from_l0() -> L1GenerationResult:
 
         # 3.4 生成全局传记
         bio = l1_generator.gen_global_biography(
-            old_profile=Bio(
-                shadesList=shades_for_bio
-            ),
+            old_profile=Bio(shadesList=shades_for_bio),
             cluster_list=clusters.get("clusterList", []),
         )
         logger.info(f"生成全局传记: {bio}")
 
         # 4. 构建结果对象
-        result = L1GenerationResult(
-            bio=bio, clusters=clusters, chunk_topics=chunk_topics, role_id=role_id
-        )
+        result = L1GenerationResult(bio=bio, clusters=clusters, chunk_topics=chunk_topics, role_id=role_id)
 
         logger.info(f"L1生成成功完成，role_id: {role_id}")
         return result
@@ -244,12 +212,8 @@ def generate_shades(clusters, l1_generator, notes_list):
     shade_cluster_map = {}  # 保存 shade 和 cluster 的映射关系
     if clusters and "clusterList" in clusters:
         for idx, cluster in enumerate(clusters.get("clusterList", []), start=1):
-            cluster_memory_ids = [
-                str(m.get("memoryId")) for m in cluster.get("memoryList", [])
-            ]
-            logger.info(
-                f"Processing cluster with {len(cluster_memory_ids)} memories"
-            )
+            cluster_memory_ids = [str(m.get("memoryId")) for m in cluster.get("memoryList", [])]
+            logger.info(f"Processing cluster with {len(cluster_memory_ids)} memories")
 
             cluster_notes = [
                 note for note in notes_list 
@@ -264,9 +228,7 @@ def generate_shades(clusters, l1_generator, notes_list):
                     shades.append(shade)
                     # 保存 shade 和对应 cluster 的映射关系
                     shade_cluster_map[shade.id] = cluster
-                    logger.info(
-                        f"Generated shade for cluster: {shade.name if hasattr(shade, 'name') else 'Unknown'}, id: {shade.id}"
-                    )
+                    logger.info(f"Generated shade for cluster: {shade.name if hasattr(shade, 'name') else 'Unknown'}, id: {shade.id}")
     return shades, shade_cluster_map
 
     
@@ -347,19 +309,24 @@ def convert_merge_shade_list_to_shades(merge_shade_list: List[Dict[str, Any]], s
     return shades_for_bio
 
 
-def store_status_bio(status_bio: Bio) -> None:
+def store_status_bio(status_bio: Bio, role_id: Optional[str] = None) -> None:
     """将状态传记存储到数据库
 
     Args:
         status_bio (Bio): 生成的状态传记对象
+        role_id: 可选的角色ID，如果提供则只删除和存储该角色的状态传记
     """
     try:
         with DatabaseSession.session() as session:
             # 删除旧的状态传记（如果存在）
-            session.query(StatusBiography).delete()
+            if role_id:
+                session.query(StatusBiography).filter(StatusBiography.role_id == role_id).delete()
+            else:
+                session.query(StatusBiography).delete()
 
             # 插入新的状态传记
             new_bio = StatusBiography(
+                role_id=role_id,
                 content=status_bio.content_second_view,
                 content_third_view=status_bio.content_third_view,
                 summary=status_bio.summary_second_view,
@@ -434,22 +401,28 @@ def get_latest_global_bio() -> Optional[Any]:
         return None
 
 
-def generate_and_store_status_bio() -> Bio:
+def generate_and_store_status_bio(role_id: Optional[str] = None) -> Bio:
     """生成并存储状态传记
+
+    Args:
+        role_id: 可选的角色ID，如果提供则只生成和存储该角色的状态传记
 
     Returns:
         Bio: 生成的状态传记对象
     """
     # 生成状态传记
-    status_bio = generate_status_bio()
+    status_bio = generate_status_bio(role_id=role_id)
     if status_bio:
         # 存储到数据库
-        store_status_bio(status_bio)
+        store_status_bio(status_bio, role_id=role_id)
     return status_bio
 
 
-def generate_status_bio() -> Bio:
+def generate_status_bio(role_id: Optional[str] = None) -> Bio:
     """生成状态传记
+
+    Args:
+        role_id: 可选的角色ID，如果提供则只生成该角色的状态传记
 
     Returns:
         Bio: 生成的状态传记
@@ -459,11 +432,12 @@ def generate_status_bio() -> Bio:
     try:
         # 1. 获取所有文档并提取笔记
         with DatabaseSession.session() as db:
-            documents = document_service.list_documents_with_l0(db)
+            documents = document_service.list_documents_with_l0(db, role_id=role_id)
             notes_list, _ = extract_notes_from_documents(documents, db)
 
         if not notes_list:
-            logger.error("未找到有效的笔记用于生成状态传记")
+            error_msg = f"未找到有效的笔记用于生成状态传记" + (f" (role_id={role_id})" if role_id else "")
+            logger.error(error_msg)
             return None
 
         # 2. 生成状态传记

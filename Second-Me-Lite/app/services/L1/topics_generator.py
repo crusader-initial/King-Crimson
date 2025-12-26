@@ -83,16 +83,21 @@ class TopicsGenerator:
         self.topic_params = {
             "temperature": 0,
             "max_tokens": 1500,
-            "top_p": 0,
+            "top_p": 0.001,  # 设置为0.001而不是0，因为某些API不接受top_p=0
             "frequency_penalty": 0,
             "presence_penalty": 0,
             "timeout": 30,
             "response_format": {"type": "json_object"},
         }
         # 直接使用 config.py 中的配置，参考 L1Generator
+        # 仅在此处补充 /v1，不影响其他服务
+        base_url = settings.OPENAI_BASE_URL.rstrip('/')
+        if not base_url.endswith('/v1'):
+            base_url = base_url + '/v1'
+        
         self.client = OpenAI(
             api_key=settings.CHAT_API_KEY,
-            base_url=settings.OPENAI_BASE_URL,
+            base_url=base_url,
         )
         self.model_name = settings.CHAT_MODEL
         logger.info(f"使用模型: {self.model_name}")
@@ -328,21 +333,21 @@ class TopicsGenerator:
         if len(memory_embeddings) == 1:
             clusters = np.array([1])
         else:
+            # 步骤1： 构建层次聚类的链接矩阵（ward法：最小化类内方差）
             linked = linkage(memory_embeddings, method="ward")
+            # 步骤2： 根据距离阈值 切割聚类树，生成每个记忆的聚类标签
             clusters = fcluster(linked, cophenetic_distance, criterion="distance")
-        
         labels = clusters.tolist()
 
         cluster_dict = {}
 
+        # 遍历每条记忆和其标签，相同标签的记忆归入同一个Cluster对象，同时标记聚类为 “新创建（is_new=True）”
         for memory, label in zip(memory_list, labels):
             if label not in cluster_dict:
                 cluster_dict[label] = Cluster(clusterId=label, is_new=True)
             cluster_dict[label].add_memory(memory)
 
-        cluster_list: List[Cluster] = self.__remove_immature_clusters(
-            cluster_dict, size_threshold
-        )
+        cluster_list: List[Cluster] = self.__remove_immature_clusters(cluster_dict, size_threshold)
         # 对于初始策略，我们需要移除聚类边界附近的一些节点，保留聚类的主要组成部分
         for cluster in cluster_list:
             cluster.prune_outliers_from_cluster()
@@ -395,12 +400,13 @@ class TopicsGenerator:
         cluster_merge_distance,
     ) -> dict:
         """
-        通过更新现有聚类或创建新聚类为shades生成主题聚类
+        为 “shades”（可理解为某类记忆 / 内容）生成 / 更新主题聚类
         
         Args:
             old_cluster_list: 现有聚类列表
             old_outlier_memory_list: 之前运行的异常值记忆列表
             new_memory_list: 要处理的新记忆列表
+
             cophenetic_distance: 层次聚类的距离阈值
             outlier_cutoff_distance: 确定异常值的距离阈值
             cluster_merge_distance: 合并聚类的距离阈值
@@ -409,28 +415,18 @@ class TopicsGenerator:
             包含更新的聚类列表和异常值记忆列表的字典
         """
         cophenetic_distance = cophenetic_distance or self.default_cophenetic_distance
-        outlier_cutoff_distance = (
-            outlier_cutoff_distance or self.default_outlier_cutoff_distance
-        )
-        cluster_merge_distance = (
-            cluster_merge_distance or self.default_cluster_merge_distance
-        )
+        outlier_cutoff_distance = outlier_cutoff_distance or self.default_outlier_cutoff_distance
+        cluster_merge_distance = cluster_merge_distance or self.default_cluster_merge_distance
 
         new_memory_list = [Memory(**memory) for memory in new_memory_list]
-        new_memory_list = [
-            memory for memory in new_memory_list if memory.embedding is not None
-        ]
+        new_memory_list = [memory for memory in new_memory_list if memory.embedding is not None]
 
         old_cluster_list = [Cluster(**cluster) for cluster in old_cluster_list]
-        old_outlier_memory_list = [
-            Memory(**memory) for memory in old_outlier_memory_list
-        ]
+        old_outlier_memory_list = [Memory(**memory) for memory in old_outlier_memory_list]
 
         if not old_cluster_list:
             # 初始策略
-            cluster_list, outlier_memory_list = self._clusters_initial_strategy(
-                new_memory_list, cophenetic_distance
-            )
+            cluster_list, outlier_memory_list = self._clusters_initial_strategy(new_memory_list, cophenetic_distance)
         else:
             # 更新策略
             cluster_list, outlier_memory_list = self._clusters_update_strategy(
@@ -443,9 +439,7 @@ class TopicsGenerator:
             )
 
         logger.info(f"cluster_list num: {len(cluster_list)}")
-        logger.info(
-            f"in cluster memory num: {sum([len(cluster.memory_list) for cluster in cluster_list])}"
-        )
+        logger.info(f"in cluster memory num: {sum([len(cluster.memory_list) for cluster in cluster_list])}")
         logger.info(f"outlier_memory_list num: {len(outlier_memory_list)}")
 
         return {
@@ -477,9 +471,7 @@ class TopicsGenerator:
                 logger.info(f"    Chunk {j + 1}:")
                 logger.info(f"      ID: {chunk.id}")
                 logger.info(f"      Document ID: {chunk.document_id}")
-                logger.info(
-                    f"      Content: {chunk.content[:100]}..."
-                )  # 仅显示前100个字符
+                logger.info(f"      Content: {chunk.content[:100]}...")  # 仅显示前100个字符
                 logger.info(f"      Has embedding: {chunk.embedding is not None}")
                 if chunk.embedding is not None:
                     logger.info(f"      Embedding shape: {chunk.embedding.shape}")
@@ -500,12 +492,8 @@ class TopicsGenerator:
         Returns:
             包含聚类数据的字典
         """
-        embedding_matrix, clean_chunks, all_note_ids = self.__build_embedding_chunks(
-            notes_list
-        )
-        logger.info(
-            f"embedding_matrix shape: {len(embedding_matrix)}, clean_chunks length: {len(clean_chunks)}"
-        )
+        embedding_matrix, clean_chunks, all_note_ids = self.__build_embedding_chunks(notes_list)
+        logger.info(f"embedding_matrix shape: {len(embedding_matrix)}, clean_chunks length: {len(clean_chunks)}")
 
         if len(embedding_matrix) == 0:
             logger.warning("No chunks found in the notes_lst")
@@ -531,9 +519,7 @@ class TopicsGenerator:
             # 直接使用当前chunk形成单个聚类
             chunk = chunks_with_topics[0]
             cluster_data = {}
-            cluster_data[
-                "0"
-            ] = {  # 使用从0到len(cluster_data)的标准化cluster_id存储聚类数据
+            cluster_data["0"] = {  # 使用从0到len(cluster_data)的标准化cluster_id存储聚类数据
                 "indices": [0],
                 "docIds": [chunk.document_id],
                 "contents": [chunk.content],
@@ -681,9 +667,7 @@ class TopicsGenerator:
                         },
                     ]
                     logger.info(f"Attempt {attempt + 1}/{max_retries}")
-                    logger.info(
-                        f"Request messages: {json.dumps(tmp_msg, ensure_ascii=False)}"
-                    )
+                    logger.info(f"Request messages: {json.dumps(tmp_msg, ensure_ascii=False)}")
 
                     answer = self._call_llm_with_retry(tmp_msg)
                     content = answer.choices[0].message.content
@@ -697,9 +681,7 @@ class TopicsGenerator:
                 except Exception as e:
                     logger.warning(f"尝试 {attempt + 1} 失败: {str(e)}")
                     if attempt == max_retries - 1:  # 最后一次尝试失败
-                        logger.error(
-                            f"所有尝试都失败，chunk: {traceback.format_exc()}"
-                        )
+                        logger.error(f"所有尝试都失败，chunk: {traceback.format_exc()}")
                         # 使用默认值或移除chunk
                         chunk.topic = "Unknown Topic"  # 设置默认值
                         chunk.tags = ["unclassified"]  # 设置默认值
@@ -746,22 +728,16 @@ class TopicsGenerator:
         clean_notes_lst = []
         # 使用内容chunk
         for note_id in all_note_ids:
-            tmp_chunks_set = [
-                chunk for chunk in all_chunks if chunk.document_id == note_id
-            ]
+            tmp_chunks_set = [chunk for chunk in all_chunks if chunk.document_id == note_id]
             if len(tmp_chunks_set) == 0:
                 continue
             elif len(tmp_chunks_set) == 1:
                 clean_chunks.append(tmp_chunks_set[0])
                 clean_ids.append(note_id)
-                clean_notes_lst.append(
-                    [note for note in notes_list if note.id == note_id][0]
-                )
+                clean_notes_lst.append( [note for note in notes_list if note.id == note_id][0] )
             else:
                 clean_ids.append(note_id)
-                clean_notes_lst.append(
-                    [note for note in notes_list if note.id == note_id][0]
-                )
+                clean_notes_lst.append( [note for note in notes_list if note.id == note_id][0] )
                 for chunk in tmp_chunks_set:
                     clean_chunks.append(chunk)
 

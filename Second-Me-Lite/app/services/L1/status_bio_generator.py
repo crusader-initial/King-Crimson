@@ -18,45 +18,25 @@ class StatusBioGenerator:
         self.model_params = {
             "temperature": 0,
             "max_tokens": 1000,
-            "top_p": 0,
+            "top_p": 0.001,
             "frequency_penalty": 0,
             "presence_penalty": 0,
             "seed": 42,
         }
         # 直接使用 config.py 中的配置，参考 L1Generator
+        # 仅在此处补充 /v1，不影响其他服务
+        base_url = settings.OPENAI_BASE_URL.rstrip('/')
+        if not base_url.endswith('/v1'):
+            base_url = base_url + '/v1'
+        
         self.client = OpenAI(
             api_key=settings.CHAT_API_KEY,
-            base_url=settings.OPENAI_BASE_URL,
-            timeout=45.0,  # 设置全局超时
+            base_url=base_url,
         )
         self.model_name = settings.CHAT_MODEL
-        self._top_p_adjusted = False  # 标记是否已调整top_p参数
-
-    def _fix_top_p_param(self, error_message: str) -> bool:
-        """如果API错误表明top_p参数无效，则修复它
-        
-        某些LLM提供商不接受top_p=0，需要在特定范围内取值。
-        此函数检查错误是否与top_p相关，并将其调整为0.001，
-        这足够接近0以保持确定性行为，同时满足API要求。
-        
-        Args:
-            error_message: API响应的错误消息
-            
-        Returns:
-            bool: 如果top_p已调整则返回True，否则返回False
-        """
-        if not self._top_p_adjusted and "top_p" in error_message.lower():
-            logger.warning("Fixing top_p parameter from 0 to 0.001 to comply with model API requirements")
-            self.model_params["top_p"] = 0.001
-            self._top_p_adjusted = True
-            return True
-        return False
 
     def _call_llm_with_retry(self, messages: List[Dict[str, str]], **kwargs) -> Any:
-        """调用LLM API，支持参数调整的自动重试
-        
-        此函数处理对语言模型的API调用，同时在发生错误时实现自动参数修复。
-        如果API由于无效的top_p参数而拒绝调用，它将调整参数值并重试一次。
+        """调用LLM API
         
         Args:
             messages: API调用的消息列表
@@ -66,7 +46,7 @@ class StatusBioGenerator:
             语言模型的API响应对象
             
         Raises:
-            Exception: 如果API调用在所有重试后失败或出现无关错误
+            Exception: 如果API调用失败
         """
         try:
             return self.client.chat.completions.create(
@@ -76,21 +56,7 @@ class StatusBioGenerator:
                 **kwargs
             )
         except Exception as e:
-            error_msg = str(e)
-            logger.error(f"API Error: {error_msg}")
-            
-            # 如果需要，尝试修复top_p参数
-            if hasattr(e, 'response') and hasattr(e.response, 'status_code') and e.response.status_code == 400:
-                if self._fix_top_p_param(error_msg):
-                    logger.info("使用调整后的top_p参数重试LLM API调用")
-                    return self.client.chat.completions.create(
-                        model=self.model_name,
-                        messages=messages,
-                        **self.model_params,
-                        **kwargs
-                    )
-            
-            # 重新抛出异常
+            logger.error(f"API调用失败: {str(e)}")
             raise
 
     def _build_message(self, user_info: UserInfo, language: str) -> List[Dict[str, str]]:

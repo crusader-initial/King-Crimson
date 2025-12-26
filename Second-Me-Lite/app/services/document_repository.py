@@ -1,38 +1,55 @@
 from typing import List, Optional, Dict
 from sqlalchemy import select
-from .dto.chunk_dto import ChunkDTO
-from app.models.document import Chunk
+from app.services.embedding_service import ChunkDTO
+from app.models.document import Chunk, Document
+from app.core.database import DatabaseSession
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-class DocumentRepository(BaseRepository[Document]):
+# 定义 BaseRepository 基类
+class BaseRepository:
+    """基础 Repository 类"""
+    def __init__(self, model):
+        self.model = model
+        self._db = DatabaseSession()
+
+
+# 注意：直接使用 Document 模型，不需要 DTO
+# DTO 通常用于：
+# 1. 跨服务边界传输数据（微服务架构）
+# 2. 隐藏数据库模型细节（API 层）
+# 3. 序列化/反序列化特殊需求
+# 在这个项目中，直接使用 SQLAlchemy 模型更简单高效
+
+
+class DocumentRepository(BaseRepository):
     def __init__(self):
         super().__init__(Document)
 
     def update_document_analysis(
         self, doc_id: int, insight: Dict, summary: Dict
-    ) -> Optional[DocumentDTO]:
+    ) -> Optional[Document]:
         """update doc's insight and summary"""
         with self._db.session() as session:
             document = session.get(self.model, doc_id)
             if document:
                 document.insight = insight
                 document.summary = summary
-                document.analyze_status = ProcessStatus.SUCCESS
+                document.analyze_status = 'SUCCESS'
                 session.commit()
-                return Document.to_dto(document)
+                return document
             return None
 
-    def find_unanalyzed(self) -> List[DocumentDTO]:
+    def find_unanalyzed(self) -> List[Document]:
         """search unanalyzed doc according to analyze_status"""
         with self._db.session() as session:
             query = select(self.model).where(
-                self.model.analyze_status.in_([ProcessStatus.INITIALIZED, ProcessStatus.FAILED])
+                self.model.analyze_status.in_(['INITIALIZED', 'FAILED'])
             )
             result = session.execute(query)
-            return [Document.to_dto(doc) for doc in result.scalars().all()]
+            return list(result.scalars().all())
 
     def find_chunks(self, document_id: int) -> List[ChunkDTO]:
         """search all chunks of the specified document"""
@@ -45,13 +62,11 @@ class DocumentRepository(BaseRepository[Document]):
             return [
                 ChunkDTO(
                     id=chunk.id,
-                    document_id=chunk.document_id,
-                    has_embedding=chunk.has_embedding,
-                    # embedding=chunk.embedding,
-                    length=len(chunk.content) if chunk.content else 0,
                     content=chunk.content,
+                    document_id=chunk.document_id,
                     tags=chunk.tags,
                     topic=chunk.topic,
+                    has_embedding=chunk.has_embedding,
                 )
                 for chunk in chunks
             ]
@@ -64,11 +79,19 @@ class DocumentRepository(BaseRepository[Document]):
             session.refresh(chunk)
             return chunk
 
-    def find_one(self, document_id: int) -> Optional[DocumentDTO]:
+    def find_one(self, document_id: int) -> Optional[Document]:
         """search doc by id"""
         with self._db.session() as session:
-            document = session.get(self.model, document_id)
-            return Document.to_dto(document) if document else None
+            # 使用 query 而不是 get，确保所有列都被加载
+            document = session.query(self.model).filter(self.model.id == document_id).first()
+            if document:
+                # 在会话关闭前预加载所有需要的属性，避免 DetachedInstanceError
+                # 通过访问属性触发加载，确保数据在会话内加载完成
+                _ = document.raw_content
+                # 将对象从 Session 中分离，但保留已加载的数据
+                # 这样对象可以在 Session 关闭后继续使用
+                session.expunge(document)
+            return document
 
     def update_chunk_embedding_status(self, chunk_id: int, has_embedding: bool) -> None:
         """update chunk embedding"""
@@ -87,16 +110,16 @@ class DocumentRepository(BaseRepository[Document]):
             logger.error(f"Error updating chunk embedding status: {str(e)}")
             raise
 
-    def find_unembedding(self) -> List[DocumentDTO]:
+    def find_unembedding(self) -> List[Document]:
         """search unembedding documents according to embedding_status"""
         with self._db.session() as session:
             query = select(self.model).where(
-                self.model.embedding_status.in_([ProcessStatus.INITIALIZED, ProcessStatus.FAILED])
+                self.model.embedding_status.in_(['INITIALIZED', 'FAILED'])
             )
             result = session.execute(query)
-            return [Document.to_dto(doc) for doc in result.scalars().all()]
+            return list(result.scalars().all())
 
-    def update_embedding_status(self, document_id: int, status: ProcessStatus) -> None:
+    def update_embedding_status(self, document_id: int, status: str) -> None:
         """update doc embedding"""
         try:
             with self._db.session() as session:
@@ -106,10 +129,10 @@ class DocumentRepository(BaseRepository[Document]):
                     .first()
                 )
                 if document:
-                    document.embedding_status = status.value
+                    document.embedding_status = status
                     session.commit()
                     logger.debug(
-                        f"Updated embedding status for document {document_id} to {status.value}"
+                        f"Updated embedding status for document {document_id} to {status}"
                     )
                 else:
                     logger.warning(f"Document not found with id: {document_id}")

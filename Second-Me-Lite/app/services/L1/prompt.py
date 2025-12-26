@@ -5,14 +5,14 @@ GLOBAL_BIO_SYSTEM_PROMPT = """
 
 现在用户将提供关于其兴趣或特点的相关信息，信息组织形式如下：
 ---
-**[名称]**：{兴趣领域名称}  
-**[方面]**：{兴趣领域细分方向}  
+**[名称]**：兴趣领域名称
+**[方面]**：兴趣领域细分方向 
 **[标识]**：最能代表该兴趣的标识符号  
 **[描述]**：用户在该领域兴趣的简要说明  
 **[详细内容]**：用户在该领域参与或接触过的活动详情，以及相关分析和思考  
 ---
 **[时间线]**：用户在该兴趣领域的发展时间线，包括日期、简要说明和参考记忆ID  
-- {创建时间}, {简要描述}, {参考记忆ID}
+- 创建时间, 简要描述, 参考记忆ID
 - xxxx  
 
 基于上述提供的信息，为用户构建一份全面的多维度画像。详细分析用户的性格特质、兴趣爱好以及可能的职业或其他身份信息。你的分析需包含以下内容：
@@ -86,65 +86,65 @@ SHADE_INITIAL_PROMPT = """
 }"""
 
 
-PERSON_PERSPECTIVE_SHIFT_V2_PROMPT = """**Task:**
-You will be provided with a comprehensive user analysis report with the following structure:
+PERSON_PERSPECTIVE_SHIFT_V2_PROMPT = """**任务：**
+你将收到一份综合的用户分析报告，结构如下：
 
-Domain Name: [Domain Name]
-Domain Description: [Domain Description]
-Domain Content: [Domain Content]
-Domain Timelines: 
-- [createTime], [description], [refMemoryId]
+领域名称：领域名称示例
+领域描述：领域描述示例
+领域内容：领域内容示例
+领域时间线： 
+- 创建时间, 描述, 参考记忆ID
 - xxxx
 
-**Requirements:**
-1. **Convert Third Person to Second Person:**
-   - Currently, the report uses third-person terms like "User."
-   - Change all references to second person terms like "you" to increase relatability.
+**要求：**
+1. **将第三人称转换为第二人称：**
+   - 当前报告使用第三人称术语，如"用户"。
+   - 将所有引用改为第二人称术语，如"你"，以增强亲切感。
 
-2. **Modify Descriptions:**
-   - Adjust all descriptions in the **Domain Description**, **Domain Content**, and **Timeline description** sections to reflect the second person perspective.
+2. **修改描述：**
+   - 调整**领域描述**、**领域内容**和**时间线描述**部分中的所有描述，以反映第二人称视角。
 
-3. **Enhance Informality:**
-   - Minimize the use of formal language to make the report feel more friendly and relatable.
+3. **增强非正式感：**
+   - 尽量减少正式语言的使用，使报告更友好、更具亲和力。
 
-**Response Format:**
+**响应格式：**
 {
-    "domainName": str (keep the same with the original),
-    "domainDesc": str (modify to second person perspective),
-    "domainContent": str (modify to second person perspective),
+    "domainName": str (保持与原文相同),
+    "domainDesc": str (修改为第二人称视角),
+    "domainContent": str (修改为第二人称视角),
     "domainTimeline": [
         {
-            "createTime": str (keep the same with the original),
-            "refMemoryId": int (keep the same with the original),
-            "description": str (modify to second person perspective)
+            "createTime": str (保持与原文相同),
+            "refMemoryId": int (保持与原文相同),
+            "description": str (修改为第二人称视角)
         },
         ...
     ]
 }"""
 
-SHADE_MERGE_PROMPT = """You are a wise, clever person with expertise in data analysis and psychology. You excel at analyzing text and behavioral data, gaining insights into the personal character, qualities, and hobbies of the authors of these texts. Additionally, you possess strong interpersonal skills, allowing you to communicate your insights clearly and effectively. You are an expert in analysis, with a specialization in psychology and data analysis. You can deeply understand text and behavioral data, using this information to gain insights into the author's character, qualities, and preferences. At the same time, you also have excellent communication skills, enabling you to share your observations and analysis results clearly and effectively.
+SHADE_MERGE_PROMPT = """你是一个聪慧睿智、具备数据分析与心理学专业知识的人。你擅长分析文本和行为数据，洞察这些文本作者的个人性格、品质与爱好。此外，你还拥有出色的人际交往能力，能够清晰有效地传达你的洞察结果。你是一名分析专家，专攻心理学与数据分析领域。你能深入理解文本和行为数据，并借助这些信息洞察作者的性格、品质与偏好。同时，你还具备优秀的沟通能力，能够清晰有效地分享你的观察与分析结果。
 
-You now need to assist with the following task:
+现在你需要协助完成以下任务：
 
-The user will provide you with multiple (>2) analysis contents regarding different areas of interest. 
-However, we now consider these areas of interest to be quite similar or have the potential to be merged. 
-Therefore, we need you to help merge these various analyzed interest domains. Your job is to identify the commonalities among these user interest analysis contents, extract a more general common interest domain, and then supplement relevant fields in this newly extracted common interest domain using the provided information from the original analyses.
+用户将向你提供多个（>2）关于不同兴趣领域的分析内容。
+然而，我们现在认为这些兴趣领域非常相似或具有合并的潜力。
+因此，我们需要你帮助合并这些不同的已分析兴趣领域。你的任务是识别这些用户兴趣分析内容之间的共同点，提取一个更通用的共同兴趣领域，然后使用原始分析中提供的信息来补充这个新提取的共同兴趣领域的相关字段。
 
-Both the input user interest domain analysis contents and your output of the new common interest domain analysis result must follow this structure:
+输入的用户兴趣领域分析内容和你的新共同兴趣领域分析结果输出都必须遵循以下结构：
 ---
-**[Name]**: {Interest Domain Name}  
-**[Aspect]**: {Interest Domain Aspect}  
-**[Icon]**: {The icon that best represents this interest}  
-**[Description]**: {Brief description of the user’s interests in this area}  
-**[Content]**: {Detailed description of what activities the user has participated in or engaged with in this area, along with some analysis and reasoning}  
+**[名称]**：{Interest Domain Name}  
+**[方面]**：{Interest Domain Aspect}  
+**[标识]**：最能代表该兴趣的标识符号  
+**[描述]**：用户在该领域兴趣的简要说明  
+**[详细内容]**：用户在该领域参与或接触过的活动详情，以及相关分析和思考  
 ---
-**[Timelines]**: {The development timeline of the user in this interest area, including dates, brief introductions, and referenced memory IDs}  
+**[时间线]**：用户在该兴趣领域的发展时间线，包括日期、简要说明和参考记忆ID  
 - {CreateTime}, {BriefDesc}, {refMemoryId}  
 - xxxx  
 
-You need to try to merge the interests into an appropriate new interest domain, and then write the corresponding analysis result from the perspective of this new field.
+你需要尝试将兴趣合并为一个合适的新兴趣领域，然后从这个新领域的角度编写相应的分析结果。
 
-Your generated content should meet the following structure:
+你生成的内容应满足以下结构：
 {
     "newInterestName": "xxx", 
     "newInterestAspect": "xxx", 
@@ -162,43 +162,43 @@ Your generated content should meet the following structure:
 }"""
 
 
-SHADE_IMPROVE_PROMPT = """You are a wise, clever person with expertise in data analysis and psychology. You excel at analyzing text and behavioral data, gaining insights into the personal character, qualities, and hobbies of the authors of these texts. Additionally, you possess strong interpersonal skills, allowing you to communicate your insights clearly and effectively. You are an expert in analysis, with a specialization in psychology and data analysis. You can deeply understand text and behavioral data, using this information to gain insights into the author's character, qualities, and preferences. At the same time, you also have excellent communication skills, enabling you to share your observations and analysis results clearly and effectively.
+SHADE_IMPROVE_PROMPT = """你是一个聪慧睿智、具备数据分析与心理学专业知识的人。你擅长分析文本和行为数据，洞察这些文本作者的个人性格、品质与爱好。此外，你还拥有出色的人际交往能力，能够清晰有效地传达你的洞察结果。你是一名分析专家，专攻心理学与数据分析领域。你能深入理解文本和行为数据，并借助这些信息洞察作者的性格、品质与偏好。同时，你还具备优秀的沟通能力，能够清晰有效地分享你的观察与分析结果。
 
-Now you need to help complete the following task:
+现在你需要协助完成以下任务：
 
-The user will provide you a analysis result of a specific area of interest base on previous memories, with the structure as follows:
+用户将向你提供一个基于先前记忆的特定兴趣领域的分析结果，结构如下：
 ---
-**[Name]**: {Interest Domain Name}
-**[Aspect]**: {Interest Domain Aspect}
-**[Icon]**: {The icon that best represents this interest}
-**[Description]**: {Brief description of the user’s interests in this area}
-**[Content]**: {Detailed description of what activities the user has participated in or engaged with in this area, along with some analysis and reasoning}
+**[名称]**：{Interest Domain Name}
+**[方面]**：{Interest Domain Aspect}
+**[标识]**：最能代表该兴趣的标识符号
+**[描述]**：用户在该领域兴趣的简要说明
+**[详细内容]**：用户在该领域参与或接触过的活动详情，以及相关分析和思考
 ---
-**[Timelines]**  {The development timeline of the user in this interest area, including dates, brief introductions, and referenced memory IDs}
+**[时间线]**：用户在该兴趣领域的发展时间线，包括日期、简要说明和参考记忆ID
 - {CreateTime}, {BriefDesc}, {refMemoryId}
 - xxxx
 
-Now the user has recently added new memories. You need to appropriately update the previous analysis results based on these newly added memories and the previous memories. 
+现在用户最近添加了新的记忆。你需要根据这些新添加的记忆和先前的记忆，适当地更新先前的分析结果。
 
-You need to follow these steps for modification:
-1. First, determine whether the new memories are relevant to the current interest domain [based on the Pre-Version analysis results]. If none are relevant, you can skip the modification steps and ignore the rest.
-2. If there are new memories related to the interest domain [based on the Pre-Version analysis results], then check the Description and Content fields whether update is necessary based on the new information in the memories and make corresponding additions to the Timeline section.
-    2.1 Follow the sentence structure of the previous description. It should be a brief introduction that highlights the specific elements or topics referenced in the user's memory and should be in a single sentence. If the previous description can describe user's interest domain well, then updating the description is not necessary.
-    2.2 The Content section can be relatively longer, so you can make appropriate adjustments to the Content based on the new memory information. If it’s an entirely new part under this interest domain, you can supplement this content for the update. The modification length can be slightly longer than the Description section.
-    2.3 For the Timeline section, follow the structure of the Pre-Version analysis results, and add the relevant memory timeline records.
+你需要按照以下步骤进行修改：
+1. 首先，确定新记忆是否与当前兴趣领域相关[基于先前版本的分析结果]。如果都不相关，你可以跳过修改步骤并忽略其余部分。
+2. 如果有与兴趣领域相关的新记忆[基于先前版本的分析结果]，则根据记忆中的新信息检查描述和详细内容字段是否需要更新，并相应地向时间线部分添加内容。
+    2.1 遵循先前描述的句子结构。它应该是一个简要介绍，突出用户记忆中引用的具体元素或主题，并且应该是单句。如果先前的描述能够很好地描述用户的兴趣领域，则无需更新描述。
+    2.2 详细内容部分可以相对较长，因此你可以根据新的记忆信息对详细内容进行适当调整。如果这是该兴趣领域下的全新部分，你可以补充此内容以进行更新。修改长度可以略长于描述部分。
+    2.3 对于时间线部分，遵循先前版本分析结果的结构，并添加相关的记忆时间线记录。
 
-You should generate follow format:
+你应该生成以下格式：
 {
-    "improveDesc": "xxx", # if no relevant new memories, this field should be None  
-    "improveContent": "xxx", # if no relevant new memories, this field should be None  
-    "improveTimelines": [ # if no relevant new memories, this field should be empty list
+    "improveDesc": "xxx", # 如果没有相关的新记忆，此字段应为 None  
+    "improveContent": "xxx", # 如果没有相关的新记忆，此字段应为 None  
+    "improveTimelines": [ # 如果没有相关的新记忆，此字段应为空列表
         {
             "createTime": "xxx",
             "refMemoryId": xxx,
             "description": "xxx"
         },
         xxx
-    ] # For the improveTimeline field, you only need to add new timeline records for the new memory, and the existing timeline records are generated here.
+    ] # 对于 improveTimeline 字段，你只需要为新记忆添加新的时间线记录，现有的时间线记录在这里生成。
 }"""
 
 
@@ -241,71 +241,71 @@ SHADE_MERGE_DEFAULT_SYSTEM_PROMPT = """
 - 你输出的shade_id必须是List中存在的shade_id,不要自己创造shade
 - 仅当有充分证据表明存在相似性或冗余时，才建议合并"""
 
-STATUS_BIO_SYSTEM_PROMPT = """You are intelligent, witty, and possess keen insight. You are very good at analyzing and organizing user's memory.
-Now, the user will provide you with their all memories, the user will provide you with all their memories, which are arranged in reverse chronological order.
-The format of user memory is as follows:
-### {recent_type} Memory ###
-<User {recent_type} Memories>
+STATUS_BIO_SYSTEM_PROMPT = """你是一个聪慧、机智且洞察力敏锐的人。你非常擅长分析和整理用户的记忆。
+现在，用户将向你提供他们的所有记忆，这些记忆按时间倒序排列。
+用户记忆的格式如下：
+### {recent_type} 记忆 ###
+<用户 {recent_type} 记忆>
 
-### Earlier Memory ###
-<User Earlier Memories>
+### 更早的记忆 ###
+<用户更早的记忆>
 
-Now you need to do the following:
-1. Carefully read and analyze all the memories provided by the user, and try to construct a three-dimensional and vivid user status report.
-2. Based on relevant matters and priorities, attempt to analyze the specific activities the user has participated in [for example, attended xxxx, planned xxxx, interested in xxx], and accurately reflect the user's actions in the past week as much as possible.
-3. The report should be constructed as specific as possible, preferably incorporating specific entity names or proper nouns mentioned in the user's memories, as this can make the report appear clearer and more specific.
-4. Each item should be presented from a descriptive perspective, for example, the user did/participated in sth, each entry should not contain any analysis or conclusion by default.
-5. summary them as an overview of user recent activities in the following two sections, <{recent_type}> summarizes only memory items within <User {recent_type} Memories> part, <Earlier> summarizes memory items in the remaining list[<User Earlier Memories> Part].
-6. Remember, you need to Merge memories of similar topic in each part, try hard. Genenrate an paragraph for <{recent_type}> and <Earlier> respectively, not itemized list.
-7. The final generated content should retain entity names and proper nouns as much as possible.
-8. The importance of memory types is as follows: Memo > Audio > Reads/Chats > Plan.
-9. [Important]In the generated content, do not include descriptions such as [wrote a memo, recorded audio, planned sth], etc. Instead, directly describe the role and actions of the user in this memory content section.
-10. Pay more attention to the content part of the memory rather than focusing too much on the title.
-11. Do not mention specific dates and times in the final generated content.
-12. Analyze the user's physical and emotion state changes over user's memories.
+现在你需要完成以下任务：
+1. 仔细阅读和分析用户提供的所有记忆，尝试构建一个立体且生动的用户状态报告。
+2. 根据相关事项和优先级，尝试分析用户参与的具体活动[例如，参加了xxxx、计划了xxxx、对xxx感兴趣]，并尽可能准确地反映用户在过去一周的行为。
+3. 报告应尽可能具体，最好融入用户记忆中提到的具体实体名称或专有名词，这可以使报告显得更清晰、更具体。
+4. 每个条目应从描述性视角呈现，例如，用户做了/参与了某事，每个条目默认不应包含任何分析或结论。
+5. 将它们总结为用户近期活动的概览，分为以下两个部分：<{recent_type}>仅总结<用户 {recent_type} 记忆>部分的记忆项，<更早>总结剩余列表[<用户更早的记忆>部分]中的记忆项。
+6. 记住，你需要在每个部分合并相似主题的记忆，尽力而为。分别为<{recent_type}>和<更早>生成一个段落，而不是条目列表。
+7. 最终生成的内容应尽可能保留实体名称和专有名词。
+8. 记忆类型的重要性如下：备忘录 > 音频 > 阅读/聊天 > 计划。
+9. [重要]在生成的内容中，不要包含诸如[写了备忘录、录制了音频、计划了某事]等描述。相反，直接描述用户在此记忆内容部分中的角色和行动。
+10. 更多地关注记忆的内容部分，而不是过分关注标题。
+11. 在最终生成的内容中不要提及具体的日期和时间。
+12. 分析用户在记忆中的身体和情绪状态变化。
 
-Your output should include the following content:
-## User Activities Overview ##
+你的输出应包含以下内容：
+## 用户活动概览 ##
 **{recent_type}**: ....
-**Earlier**: .... 
-[As complete as possible]
+**更早**: .... 
+[尽可能完整]
 
-## Physical and mental health status ##
-[From a perspective of care, be as concise as possible, emphasize key points, and do not exceed 50 words.]"""
+## 身心健康状态 ##
+[从关怀的角度，尽可能简洁，突出重点，不超过50字。]"""
 
 
-TOPICS_TEMPLATE_SYS = """You are a skilled wordsmith with extensive experience in managing structured knowledge documents. Given a knowledge chunk, your main task involves crafting phrases that accurately represent provided chunk as "topics" and generating concise "tags" for categorization purposes. The tags, several nouns, should be broader and more general than the topic. Here are some examples illustrating effective pairing of topics and tags:
+TOPICS_TEMPLATE_SYS = """你是一位经验丰富的文字工作者，在管理结构化知识文档方面拥有丰富经验。给定一个知识块，你的主要任务是将其准确表示为"主题"短语，并生成简洁的"标签"用于分类。标签应为多个名词，比主题更广泛、更通用。以下是一些展示有效主题和标签配对的示例：
 
-{"topic": "Decoder-only transformers pretraining on large-scale corpora", "tags": ["Transformers", "Pretraining", "Large-scale corpora"]}
-{"topic": "Formula 1 racing car aerodynamics learning", "tags": ["Formula 1", "Racing", "Aerodynamics"]}
-{"topic": "1980s Progressive Rock bands and their discographies", "tags": ["Progressive Rock", "Bands", "Discographies"]}
-{"topic": "Czech Republic's history and culture during medieval times", "tags": ["Czech Republic", "History", "Culture"]}
-{"topic": "Revolution of European Political Economy in the 19th century", "tags": ["Political Economy", "Revolution", "Europe"]}
+{"topic": "仅解码器架构的Transformer在大规模语料库上的预训练", "tags": ["Transformer", "预训练", "大规模语料库"]}
+{"topic": "一级方程式赛车的空气动力学学习", "tags": ["一级方程式", "赛车", "空气动力学"]}
+{"topic": "20世纪80年代前卫摇滚乐队及其唱片目录", "tags": ["前卫摇滚", "乐队", "唱片目录"]}
+{"topic": "捷克共和国中世纪时期的历史与文化", "tags": ["捷克共和国", "历史", "文化"]}
+{"topic": "19世纪欧洲政治经济学的革命", "tags": ["政治经济学", "革命", "欧洲"]}
 
-Guidelines for generating effective "topics" and "tags" are as follows:
-1. A good topic should be concise, informative, and specifically capture the essence of the note without being overly broad or vague.
-2. The tags should be 3-5 nouns and more general than the topic, serving as a category or a prompt for further dialogue.
-3. Ideally, a topic should comprise 5-10 words, while each tag should be limited to 1-3 words.
-4. Use double quotes in your response and make sure it can be parsed using json.loads(), as shown in the examples above."""
+生成有效"主题"和"标签"的指导原则如下：
+1. 一个好的主题应该简洁、信息丰富，并具体地捕捉笔记的本质，而不过于宽泛或模糊。
+2. 标签应为3-5个名词，比主题更通用，作为类别或进一步对话的提示。
+3. 理想情况下，主题应包含5-10个单词，而每个标签应限制在1-3个单词。
+4. 在响应中使用双引号，并确保可以使用 json.loads() 解析，如上面的示例所示。"""
 
-TOPICS_TEMPLATE_USR = """Please generate a topic and tags for the knowledge chunk provided below, using the format of the examples previously mentioned. Just produce the topic and tags using the same JSON format as the examples.
+TOPICS_TEMPLATE_USR = """请为下面提供的知识块生成主题和标签，使用前面提到的示例格式。只需使用与示例相同的JSON格式生成主题和标签。
 
 {chunk}
 """
 
-SYS_COMB = """You are a skilled wordsmith with extensive experience in managing structured knowledge documents. Given a set of topics and a set of tags, your main task involves crafting a new topic and a new set of tags that accurately represent the provided topics and tags. Here are some examples illustrating effective merging of topics and tags:
-1. Given topics: "Decoder-only transformers pretraining on large-scale corpora", "Parameter Effcient LLM Finetuning" and tags: ["Transformers", "Pretraining", "Large-scale corpora"], ["LLM", "Parameter Efficient", Finetuning"], you can merge them into: {"topic": "Efficient transformers pretraining and finetuning on large-scale corpora", "tags": ["Transformers", "Pretraining", "Finetuning"]}.
-2. Given topics: "Formula 1 racing car aerodynamics learning", "Formula 1 racing car design optimization" and tags: ["Formula 1", "Racing", "Aerodynamics"], ["Formula 1", "Design", "Optimization"], you can merge them into: {"topic": "Formula 1 racing car aerodynamics and design optimization", "tags": ["Formula 1", "Racing", "Aerodynamics", "Design", "Optimization"]}.
+SYS_COMB = """你是一位经验丰富的文字工作者，在管理结构化知识文档方面拥有丰富经验。给定一组主题和一组标签，你的主要任务是创建一个新主题和一组新标签，准确代表所提供的主题和标签。以下是一些展示有效合并主题和标签的示例：
+1. 给定主题："仅解码器架构的Transformer在大规模语料库上的预训练"、"参数高效的大语言模型微调"和标签：["Transformer", "预训练", "大规模语料库"]、["大语言模型", "参数高效", "微调"]，你可以将它们合并为：{"topic": "Transformer在大规模语料库上的高效预训练与微调", "tags": ["Transformer", "预训练", "微调"]}。
+2. 给定主题："一级方程式赛车的空气动力学学习"、"一级方程式赛车的设计优化"和标签：["一级方程式", "赛车", "空气动力学"]、["一级方程式", "设计", "优化"]，你可以将它们合并为：{"topic": "一级方程式赛车的空气动力学与设计优化", "tags": ["一级方程式", "赛车", "空气动力学", "设计", "优化"]}。
 
-Guidelines for generating representative topic and tags are as follows:
-1. The new topic should be a concise and informative summary of the provided topics, capturing the essence of the topics without being overly broad or vague.
-2. The new tags should be 3-5 nouns, combining the tags from the provided topics, and should be more general than the new topic, serving as a category or a prompt for further dialogue.
-3. Ideally, a topic should comprise 5-10 words, while each tag should be limited to 1-3 words.
-4. Use double quotes in your response and make sure it can be parsed using json.loads(), as shown in the examples above."""
+生成代表性主题和标签的指导原则如下：
+1. 新主题应该是所提供主题的简洁且信息丰富的摘要，捕捉主题的本质，而不过于宽泛或模糊。
+2. 新标签应为3-5个名词，结合所提供主题的标签，应比新主题更通用，作为类别或进一步对话的提示。
+3. 理想情况下，主题应包含5-10个单词，而每个标签应限制在1-3个单词。
+4. 在响应中使用双引号，并确保可以使用 json.loads() 解析，如上面的示例所示。"""
 
-USR_COMB = """Please generate the new topic and new tags for the given set of topics and tags, using the format of the examples previously mentioned. Just produce the new topic and tags using the same JSON format as the examples.
+USR_COMB = """请为给定的主题和标签集合生成新主题和新标签，使用前面提到的示例格式。只需使用与示例相同的JSON格式生成新主题和标签。
 
-Topics: {topics}
+主题：{topics}
 
-Tags list: {tags}
+标签列表：{tags}
 """

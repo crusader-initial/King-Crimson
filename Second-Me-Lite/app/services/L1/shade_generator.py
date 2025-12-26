@@ -33,9 +33,14 @@ class ShadeGenerator:
             "timeout": 45,
         }
         # 直接使用 config.py 中的配置，参考 L1Generator
+        # 仅在此处补充 /v1，不影响其他服务
+        base_url = settings.OPENAI_BASE_URL.rstrip('/')
+        if not base_url.endswith('/v1'):
+            base_url = base_url + '/v1'
+        
         self.client = OpenAI(
             api_key=settings.CHAT_API_KEY,
-            base_url=settings.OPENAI_BASE_URL,
+            base_url=base_url,
         )
         self.model_name = settings.CHAT_MODEL
         self._top_p_adjusted = False  # 标记是否已调整top_p参数
@@ -144,9 +149,7 @@ Domain Timelines:
     "-".join([f"{timeline.create_time}, {timeline.desc_third_view}, {timeline.ref_memory_id}" for timeline in shade_info.timelines if timeline.is_new])
 }
 """
-        shift_perspective_message = self._build_message(
-            PERSON_PERSPECTIVE_SHIFT_V2_PROMPT, user_prompt
-        )
+        shift_perspective_message = self._build_message(PERSON_PERSPECTIVE_SHIFT_V2_PROMPT, user_prompt)
         response = self._call_llm_with_retry(shift_perspective_message)
         content = response.choices[0].message.content
         shift_pattern = r"\{.*\}"
@@ -157,7 +160,7 @@ Domain Timelines:
             logger.warning(f"解析视角转换结果失败，使用默认值: {content}")
             # 创建具有预期参数的默认映射
             shift_perspective_result = {
-                "domainDesc": f"You have knowledge and experience related to {shade_info.name}.",
+                "domainDesc": f"你有和{shade_info.name}相关的知识和经验 .",
                 "domainContent": shade_info.content_third_view,
                 "domainTimeline": []
             }
@@ -385,28 +388,20 @@ Recent Memories:
         logger.warning(f"new_memory_list: {new_memory_list}")
         
         if not (shade_info_list or old_memory_list):
-            logger.info(
-                f"Shades initial Process! Current shade have {len(new_memory_list)} memories!"
-            )
+            logger.info(f"Shades initial Process! Current shade have {len(new_memory_list)} memories!")
             new_shade = self._initial_shade_process(new_memory_list)
         elif shade_info_list and old_memory_list:
             if len(shade_info_list) > 1:
-                logger.info(
-                    f"Merge shades Process! {len(shade_info_list)} shades need to be merged!"
-                )
+                logger.info(f"Merge shades Process! {len(shade_info_list)} shades need to be merged!")
                 raw_shade = self._merge_shades_info(old_memory_list, shade_info_list)
             else:
                 raw_shade = shade_info_list[0]
-            logger.info(
-                f"Update shade Process! Current shade should improve {len(new_memory_list)} memories!"
-            )
+            logger.info(f"Update shade Process! Current shade should improve {len(new_memory_list)} memories!")
             new_shade = self._improve_shade_info(new_memory_list, raw_shade)
         else:
             # 意味着shade_info_list或old_memory_list为空，表明后端输入参数异常
             logger.error(traceback.format_exc())
-            raise Exception(
-                "shade_info_list或old_memory_list为空！请检查输入！"
-            )
+            raise Exception("shade_info_list或old_memory_list为空！请检查输入！")
 
         # 检查new_shade是否为空字典（重点关注初始阶段）
         if not new_shade:
@@ -418,9 +413,14 @@ Recent Memories:
 class ShadeMerger:
     def __init__(self):
         # 直接使用 config.py 中的配置，参考 L1Generator
+        # 仅在此处补充 /v1，不影响其他服务
+        base_url = settings.OPENAI_BASE_URL.rstrip('/')
+        if not base_url.endswith('/v1'):
+            base_url = base_url + '/v1'
+        
         self.client = OpenAI(
             api_key=settings.CHAT_API_KEY,
-            base_url=settings.OPENAI_BASE_URL,
+            base_url=base_url,
         )
         self.model_name = settings.CHAT_MODEL
         
@@ -540,9 +540,7 @@ class ShadeMerger:
         if not shades:
             raise ValueError("No valid shades found for the given merge list.")
 
-        total_embedding = np.zeros(
-            len(shades[0].cluster_info["centerEmbedding"])
-        )  # 假设center_embedding是固定长度的向量
+        total_embedding = np.zeros(len(shades[0].cluster_info["centerEmbedding"]))  # 假设center_embedding是固定长度的向量
         total_cluster_size = 0
 
         for shade in shades:
@@ -552,9 +550,7 @@ class ShadeMerger:
             total_cluster_size += cluster_size
 
         if total_cluster_size == 0:
-            raise ValueError(
-                "Total cluster size is zero, cannot compute the new center embedding."
-            )
+            raise ValueError("Total cluster size is zero, cannot compute the new center embedding.")
 
         new_center_embedding = total_embedding / total_cluster_size
         return new_center_embedding.tolist()
@@ -640,9 +636,7 @@ class ShadeMerger:
                 return response
 
             user_prompt = self._build_user_prompt(shade_info_list)
-            merge_decision_message = self._build_message(
-                SHADE_MERGE_DEFAULT_SYSTEM_PROMPT, user_prompt
-            )
+            merge_decision_message = self._build_message(SHADE_MERGE_DEFAULT_SYSTEM_PROMPT, user_prompt)
             logger.info(f"Built merge_decision_message: {merge_decision_message}")
 
             response = self._call_llm_with_retry(merge_decision_message)
@@ -653,9 +647,7 @@ class ShadeMerger:
                 merge_shade_list = self.__parse_json_response(content, r"\[.*\]")
                 logger.info(f"Parsed merge_shade_list: {merge_shade_list}")
             except Exception as e:
-                raise Exception(
-                    f"Failed to parse the shade merge list: {content}"
-                ) from e
+                raise Exception(f"Failed to parse the shade merge list: {content}") from e
 
             # 收集所有在合并组中的shade IDs
             merged_shade_ids = set()
@@ -674,27 +666,17 @@ class ShadeMerger:
                         continue
 
                     # 根据shadeIds获取shades
-                    shades = [
-                        shade for shade in shade_info_list if str(shade.id) in shade_ids
-                    ]
+                    shades = [shade for shade in shade_info_list if str(shade.id) in shade_ids]
 
                     if not shades:
-                        logger.info(
-                            f"未找到shadeIds的有效shades: {shade_ids}。跳过此组。"
-                        )
+                        logger.info(f"未找到shadeIds的有效shades: {shade_ids}。跳过此组。")
                         continue
 
                     # 计算新的聚类嵌入向量（中心向量）
-                    new_cluster_embedd = self._calculate_merged_shades_center_embed(
-                        shades
-                    )
-                    logger.info(
-                        f"Calculated new cluster embedding: {new_cluster_embedd}"
-                    )
+                    new_cluster_embedd = self._calculate_merged_shades_center_embed(shades)
+                    logger.info(f"Calculated new cluster embedding: {new_cluster_embedd}")
 
-                    final_merge_shade_list.append(
-                        {"shadeIds": shade_ids, "centerEmbedding": new_cluster_embedd}
-                    )
+                    final_merge_shade_list.append({"shadeIds": shade_ids, "centerEmbedding": new_cluster_embedd})
 
             # 处理未合并的shade，每个单独成组
             for shade in shade_info_list:
