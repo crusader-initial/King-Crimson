@@ -171,7 +171,7 @@ class L1Generator:
         self.bio_model_params = {
             "temperature": 0,
             "max_tokens": 2000,
-            "top_p": 0,
+            "top_p": 0.001,  # 设置为0.001而不是0，因为某些API不接受top_p=0
             "frequency_penalty": 0,
             "seed": 42,
             "presence_penalty": 0,

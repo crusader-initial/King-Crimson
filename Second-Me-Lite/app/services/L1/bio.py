@@ -350,7 +350,7 @@ class Cluster:
 
     def to_json(self):
         return {
-            "clusterId": self.cluster_id if not self.is_new else None,
+            "clusterId": None if (self.is_new and self.cluster_id is None) else self.cluster_id,
             "memoryList": [memory.to_json() for memory in self.memory_list],
             "centerEmbedding": self.cluster_center.tolist(),
             "mergeList": self.merge_list,

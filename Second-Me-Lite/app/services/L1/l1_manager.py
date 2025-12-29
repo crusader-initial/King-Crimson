@@ -511,15 +511,22 @@ def store_l1_data(session, result: L1GenerationResult, role_id: Optional[str] = 
 
 def __store_version(session, role_id: Optional[str] = None) -> int:
     """存储L1版本记录"""
-    # 获取全局最大版本号
-    max_version = session.query(L1Version).order_by(L1Version.version.desc()).first()
+    # 查询当前role_id的最大版本号
+    if role_id:
+        max_version = session.query(L1Version).filter(
+            L1Version.role_id == role_id
+        ).order_by(L1Version.version.desc()).first()
+    else:
+        # 如果没有role_id，查询全局最大版本号（向后兼容）
+        max_version = session.query(L1Version).order_by(L1Version.version.desc()).first()
+    
     next_version = (max_version.version + 1) if max_version else 1
     
     # 创建新版本记录
     new_version = L1Version(
         version=next_version,
         status='active',
-        description='L1 data generated from L0',
+        description='L1 基于L0 层数据生成新的数据',
         role_id=role_id
     )
     session.add(new_version)
@@ -565,10 +572,12 @@ def __store_clusters(session, clusters: Dict[str, Any], version: int):
         
         # 获取聚类中心（如果有）
         cluster_center = None
-        if "center" in cluster:
-            cluster_center = json.dumps(cluster["center"])
-        elif "clusterCenter" in cluster:
-            cluster_center = json.dumps(cluster["clusterCenter"])
+        if "centerEmbedding" in cluster:
+            cluster_center = json.dumps(cluster["centerEmbedding"])
+        # elif "center" in cluster:  # 向后兼容
+        #     cluster_center = json.dumps(cluster["center"])
+        # elif "clusterCenter" in cluster:  # 向后兼容
+        #     cluster_center = json.dumps(cluster["clusterCenter"])
         
         new_cluster = L1Cluster(
             version=version,
