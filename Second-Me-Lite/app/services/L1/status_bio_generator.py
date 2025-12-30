@@ -23,15 +23,10 @@ class StatusBioGenerator:
             "presence_penalty": 0,
             "seed": 42,
         }
-        # 直接使用 config.py 中的配置，参考 L1Generator
-        # 仅在此处补充 /v1，不影响其他服务
-        base_url = settings.OPENAI_BASE_URL.rstrip('/')
-        if not base_url.endswith('/v1'):
-            base_url = base_url + '/v1'
-        
+        # 直接使用 config.py 中的配置
         self.client = OpenAI(
             api_key=settings.CHAT_API_KEY,
-            base_url=base_url,
+            base_url=settings.OPENAI_BASE_URL,
         )
         self.model_name = settings.CHAT_MODEL
 

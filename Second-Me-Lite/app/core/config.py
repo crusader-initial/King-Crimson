@@ -26,7 +26,7 @@ class Settings(BaseSettings):
 
     # LLM (Remote API - 自部署模型)
     CHAT_API_KEY: str = "sk-315843dc1b594959a845a16269cd73c0"  # 自部署模型API Key
-    OPENAI_BASE_URL: str = "http://10.70.128.152:8089"  # 自部署模型Base URL
+    OPENAI_BASE_URL: str = "http://10.70.128.152:8089/v1"  # 自部署模型Base URL（包含/v1路径）
     CHAT_MODEL: str = "qwen2.5-vl-72b-instruct"
     
     # Document Chunking 配置

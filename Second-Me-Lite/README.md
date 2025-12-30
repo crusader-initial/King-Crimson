@@ -178,7 +178,7 @@ python run.py
 
 *   **PUT /api/status-biography/{role_id}**: 创建或更新状态传记（upsert）
     *   功能: 根据角色ID创建或更新状态传记记录
-    *   参数: `role_id`（角色ID，即 `loads.id`，因为 `role.id` 和 `role.uuid` 都使用 `loads.id`）
+    *   参数: `role_id`（角色ID，即 `roles.id`，独立的UUID）
     *   请求体: JSON 格式，所有字段可选
         ```json
         {
@@ -194,7 +194,7 @@ python run.py
 
 *   **PUT /api/l1-bios/{role_id}**: 创建或更新L1传记（upsert，按角色ID）
     *   功能: 根据角色ID创建或更新L1传记记录
-    *   参数: `role_id`（角色ID，即 `loads.id`，因为 `role.id` 和 `role.uuid` 都使用 `loads.id`）
+    *   参数: `role_id`（角色UUID，即 `roles.uuid`，对应 `loads.id`）
     *   请求体: JSON 格式
         ```json
         {

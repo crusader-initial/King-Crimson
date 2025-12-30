@@ -142,8 +142,8 @@ export default function LoginScreen() {
       >
         {/* 标题区域 */}
         <View style={styles.header}>
-          <Text style={styles.title}>欢迎回来</Text>
-          <Text style={styles.subtitle}>请输入手机号和验证码登录</Text>
+          <Text style={styles.title}>King Crimson</Text>
+          {/*<Text style={styles.subtitle}>请输入手机号和验证码登录</Text>*/}
         </View>
 
         {/* 输入区域 */}

@@ -28,14 +28,9 @@ class ChatService:
         # 基础策略链，必须包含至少一个基础策略
         self.default_strategy_chain = [BasePromptStrategy, RoleBasedStrategy]
         # 创建自部署模型客户端（使用OpenAI兼容模式）
-        # 确保 base_url 以 /v1 结尾，与其他服务保持一致
-        base_url = settings.OPENAI_BASE_URL.rstrip('/')
-        if not base_url.endswith('/v1'):
-            base_url = base_url + '/v1'
-        
         self.default_client = OpenAI(
             api_key=settings.CHAT_API_KEY,
-            base_url=base_url
+            base_url=settings.OPENAI_BASE_URL
         )
 
     def chat(

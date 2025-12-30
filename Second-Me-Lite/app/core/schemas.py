@@ -50,6 +50,7 @@ class UpdateRoleRequest(BaseModel):
 class InfoCollectionLLMRequest(BaseModel):
     """信息采集LLM请求模型（用于信息采集过程中的LLM调用）"""
     query: str  # 用户查询或上下文
+    load_id: str  # 用户ID（loads.id）
 
 class InfoCollectionRequest(BaseModel):
     """信息采集提交请求模型"""
@@ -104,6 +105,22 @@ class GenerateStatusBioRequest(BaseModel):
 class GenerateL1Request(BaseModel):
     """生成L1数据请求模型"""
     role_id: str  # 角色ID，用于获取该角色的所有文档并生成L1数据
+
+class CreateConversationRequest(BaseModel):
+    """创建会话请求模型"""
+    user_id: str  # 用户ID（loads.id）
+    participant_id: str  # 参与者ID（roles.id 或其他用户ID）
+    participant_type: str  # 参与者类型（必传，如 'role'）
+    title: Optional[str] = None  # 会话标题（可选）
+
+class CreateMessageRequest(BaseModel):
+    """创建消息请求模型"""
+    conversation_id: str  # 会话ID
+    sender_id: str  # 发送者ID（user_id 或 role_id）
+    receiver_id: str  # 接收者ID（user_id 或 role_id）
+    content: str  # 消息内容
+    message_type: str = 'text'  # 消息类型（默认 'text'）
+    attachment_url: Optional[str] = None  # 附件URL（可选）
 
 class AdvancedChatRequest(BaseModel):
     """高级聊天请求模型 - 多阶段迭代优化"""

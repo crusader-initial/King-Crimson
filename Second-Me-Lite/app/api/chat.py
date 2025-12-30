@@ -2,10 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.schemas import ChatRequest, AdvancedChatRequest
+from app.core.schemas import ChatRequest
 from app.core.response import APIResponse
 from app.services.chat_service import chat_service
-from app.services.advanced_chat_service import advanced_chat_service
 from app.services.prompt_builder import (
     BasePromptStrategy,
     RoleBasedStrategy,

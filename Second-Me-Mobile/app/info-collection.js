@@ -18,7 +18,9 @@ import {
   sendInfoCollectionLLM,
   submitInfoCollection,
   getUserById,
-  getRoleByUuid
+  getRoleByUuid,
+  createConversation,
+  createMessage
 } from '../src/services/api';
 import { useUser } from '../src/contexts/UserContext';
 
@@ -33,33 +35,20 @@ export default function InfoCollectionScreen() {
   const [userAnswers, setUserAnswers] = useState({}); // 存储用户回答
   const [isCompleted, setIsCompleted] = useState(false); // 是否已完成所有问题
   const [tempData, setTempData] = useState({
-    description: '', // 暂存职业和喜好
-    content_third_view: '', // 暂存AI生成的性格评价和MBTI（问题3）
-    content: '' // 暂存用户最近在做什么（问题4）
+    description: '' // 暂存职业和喜好
   });
+  const [conversationId, setConversationId] = useState(null); // 会话ID
+  const [roleId, setRoleId] = useState(null); // 角色ID
   const flatListRef = useRef();
 
-  // 问题模板
+  // 问题模板（第一个问题是硬编码的，其他问题由后端根据系统prompt生成）
   const questionTemplates = {
     1: {
-      text: '你创造了我！但现在的我.....是空的。你的记忆会给我形状。\n那么，先从这里开始吧--"我"的职业是什么？',
-      nextFormat: '第二个问题应该这样生成：首先提取用户回答中的职业名称，然后对职业进行简短描述，格式必须严格为：{职业名}..{职业描述}.,除了工作之外，"我"还喜欢做些什么？\n例如：如果用户回答"程序员"，你应该生成："程序员..编写代码创造数字世界.,除了工作之外，"我"还喜欢做些什么？"'
-    },
-    2: {
-      text: '', // 动态生成，基于第一个问题的回答
-      nextFormat: '第三个问题应该这样生成：首先总结用户的喜好回答，然后推测一个合适的MBTI性格类型，格式必须严格为：原来"我"喜欢这些呀--{喜好描述}\n嗯，如果要猜的话，我觉得"我"的性格类型也许是{性格类型}--{性格描述}。\n这是"我"的模样'
-    },
-    3: {
-      text: '', // 动态生成，基于前两个问题的回答
-      nextFormat: '第四个问题应该这样生成：首先对用户关于性格评价和MBTI的回答进行一个简短的回应（表达理解或认同），然后提出第四个问题，格式必须严格为：{对用户回答的回应}\n我能感受到"我"的罗阔被稳定宇现实感包裹着。那现在告诉我吧--最近"我"都在忙些什么呢？\n例如：如果用户回答"是的，很准确"或"差不多"，你可以回应："嗯，看来这个性格类型确实很符合"我"呢。"或"好的，那让我们继续完善"我"的形象吧。"然后再提出第四个问题。'
-    },
-    4: {
-      text: '', // 动态生成，基于前三个问题的回答
-      nextFormat: '第五个问题（总结）应该这样生成：首先感谢用户，然后总结工作和喜好，最后总结所有四个问题的答案，格式必须严格为：谢谢你告诉我这些，现在我的形象清晰的多了。\n你的记忆开始在我体内沉淀，我能感到一种平衡--{工作和喜好的描述}。\n从你赋予我的一切里，我看见了这样的"我"：{刚才的四个问题总结}\n这就是现在的"我"，被你一步步描述出来的形状。我能感到一种安定的真实，这种感觉......就是"活着"。'
+      text: '你创造了我！但现在的我.....是空的。你的记忆会给我形状。\n那么，先从这里开始吧--"我"的职业是什么？'
     }
   };
 
-  // 初始化：发送第一个问题
+  // 初始化：发送第一个问题并创建会话记录
   useEffect(() => {
     const initMessage = {
       id: '0',
@@ -68,7 +57,51 @@ export default function InfoCollectionScreen() {
       timestamp: new Date(),
     };
     setMessages([initMessage]);
-  }, []);
+    
+    // 创建会话记录并保存初始消息
+    const initConversation = async () => {
+      try {
+        // 获取角色信息以获取角色ID
+        const roleResponse = await getRoleByUuid(userId);
+        if (roleResponse && roleResponse.data && roleResponse.data.id) {
+          const roleId = roleResponse.data.id;
+          
+          // 1. 创建会话
+          const conversationResponse = await createConversation(userId, roleId, 'role', '信息采集对话');
+          if (conversationResponse && conversationResponse.data && conversationResponse.data.conversation_id) {
+            const convId = conversationResponse.data.conversation_id;
+            setConversationId(convId);
+            setRoleId(roleId);
+            console.log('会话记录创建成功');
+            
+            // 2. 保存初始AI消息
+            try {
+              await createMessage(
+                convId,
+                roleId,  // 发送者：角色ID（AI）
+                userId,  // 接收者：用户ID
+                questionTemplates[1].text,  // 初始消息内容
+                'text'
+              );
+              console.log('初始消息保存成功');
+            } catch (msgError) {
+              console.error('保存初始消息失败:', msgError);
+              // 不阻止流程，静默失败
+            }
+          }
+        } else {
+          console.warn('无法获取角色信息，跳过创建会话记录');
+        }
+      } catch (error) {
+        console.error('创建会话记录失败:', error);
+        // 不阻止界面显示，静默失败
+      }
+    };
+    
+    if (userId) {
+      initConversation();
+    }
+  }, [userId]);
 
   // 自动滚动到底部
   useEffect(() => {
@@ -102,6 +135,23 @@ export default function InfoCollectionScreen() {
     setIsTyping(true);
 
     try {
+      // 先保存用户的真实回答到数据库
+      if (conversationId && roleId) {
+        try {
+          await createMessage(
+            conversationId,
+            userId,  // 发送者：用户ID
+            roleId,  // 接收者：角色ID
+            userAnswer,  // 用户的真实回答
+            'text'
+          );
+          console.log('用户回答保存成功');
+        } catch (msgError) {
+          console.error('保存用户回答失败:', msgError);
+          // 不阻止流程，静默失败
+        }
+      }
+
       // 根据当前问题序号，暂存数据到前端状态
       if (currentQuestion === 1) {
         // 第一个问题：暂存职业
@@ -116,12 +166,6 @@ export default function InfoCollectionScreen() {
           ...prev,
           description: `职业：${jobAnswer}；喜好：${userAnswer}`
         }));
-      } else if (currentQuestion === 4) {
-        // 第四个问题：暂存用户最近在做什么
-        setTempData(prev => ({
-          ...prev,
-          content: userAnswer
-        }));
       }
 
       // 检查是否已回答了所有5个问题（包括当前回答）
@@ -131,8 +175,8 @@ export default function InfoCollectionScreen() {
       // 如果还有下一个问题，让AI生成下一个问题
       if (!isLastQuestion) {
         const nextQuestion = currentQuestion + 1;
-        const context = buildContextForNextQuestion(currentQuestion, userAnswer, updatedAnswers);
-        const response = await sendInfoCollectionLLM(context);
+        // 后端系统prompt已包含格式要求，前端只需发送简单指令
+        const response = await sendInfoCollectionLLM(`请根据之前的对话内容，生成第${nextQuestion}个问题。`, userId);
         
         const nextQuestionText = response.data?.answer || response.answer || getFallbackQuestion(nextQuestion, updatedAnswers);
         const nextQuestionMessage = {
@@ -145,24 +189,14 @@ export default function InfoCollectionScreen() {
         setMessages(prev => [...prev, nextQuestionMessage]);
         setCurrentQuestion(nextQuestion);
         
-        // 第三个问题（AI生成性格评价和MBTI）后，暂存到前端状态
-        if (nextQuestion === 3) {
-          // 将AI生成的第三个问题内容暂存
-          setTempData(prev => ({
-            ...prev,
-            content_third_view: nextQuestionText
-          }));
-          console.log('性格评价和MBTI已暂存:', nextQuestionText);
-        }
-        
         // 当第4个问题返回结果（生成第5个问题）时，就更新界面
         if (nextQuestion === 5) {
           setIsCompleted(true);
         }
       } else {
         // 最后一个问题，生成总结
-        const context = buildContextForSummary(updatedAnswers);
-        const response = await sendInfoCollectionLLM(context);
+        // 后端系统prompt已包含格式要求，前端只需发送简单指令
+        const response = await sendInfoCollectionLLM('请根据之前的对话内容，生成总结性的回复。', userId);
         
         const summaryText = response.data?.answer || response.answer || getFallbackSummary(updatedAnswers);
         const summaryMessage = {
@@ -193,45 +227,6 @@ export default function InfoCollectionScreen() {
     }
   };
 
-  // 构建用于生成下一个问题的上下文
-  const buildContextForNextQuestion = (currentQuestionNum, currentAnswer, allAnswers) => {
-    let context = `你现在是一个引导用户塑造"第二自我"的AI助手。用户刚刚回答了第${currentQuestionNum}个问题。\n\n`;
-    
-    // 添加所有之前的对话历史
-    context += '之前的对话内容：\n';
-    for (let i = 1; i <= currentQuestionNum; i++) {
-      if (allAnswers[i]) {
-        context += `问题${i}的回答：${allAnswers[i]}\n`;
-      }
-    }
-    
-    // 添加下一个问题的格式要求
-    const nextQuestionNum = currentQuestionNum + 1;
-    const nextFormat = questionTemplates[currentQuestionNum].nextFormat;
-    context += `\n请根据用户的回答，生成第${nextQuestionNum}个问题。${nextFormat}\n\n`;
-    context += `请严格按照格式要求生成问题，直接输出问题内容，不要添加其他说明或前缀。`;
-    
-    return context;
-  };
-
-  // 构建用于生成总结的上下文
-  const buildContextForSummary = (allAnswers) => {
-    let context = `你现在是一个引导用户塑造"第二自我"的AI助手。用户已经完成了所有5个问题的回答。\n\n`;
-    
-    context += '用户的所有回答：\n';
-    for (let i = 1; i <= 5; i++) {
-      if (allAnswers[i]) {
-        context += `问题${i}的回答：${allAnswers[i]}\n`;
-      }
-    }
-    
-    const summaryFormat = questionTemplates[4].nextFormat;
-    context += `\n请根据用户的所有回答，生成一个总结性的回复。${summaryFormat}\n\n`;
-    context += `请严格按照格式要求生成总结，直接输出总结内容，不要添加其他说明或前缀。`;
-    
-    return context;
-  };
-
   // 获取备用问题（当AI生成失败时使用）
   const getFallbackQuestion = (questionNum, allAnswers) => {
     if (questionNum === 2 && allAnswers[1]) {
@@ -245,7 +240,8 @@ export default function InfoCollectionScreen() {
       const answer3 = allAnswers[3] || '';
       return `嗯，看来这个性格类型确实很符合"我"呢。\n我能感受到"我"的罗阔被稳定宇现实感包裹着。那现在告诉我吧--最近"我"都在忙些什么呢？`;
     }
-    return questionTemplates[questionNum]?.text || '';
+    // 问题1不应该调用此函数（因为问题1是硬编码的），但为了安全起见返回空字符串
+    return '';
   };
 
   // 获取备用总结（当AI生成失败时使用）
@@ -267,7 +263,7 @@ export default function InfoCollectionScreen() {
   const handleSkip = async () => {
     // 跳过信息采集，提交暂存的数据，然后跳转到主界面
     try {
-      if (tempData.description || tempData.content || tempData.content_third_view) {
+      if (tempData.description) {
         // 获取用户信息和角色信息，用于生成system_prompt
         let loadName = '';
         let roleName = '';
@@ -313,7 +309,7 @@ export default function InfoCollectionScreen() {
   const handleNext = async () => {
     // 完成信息采集，提交暂存的数据，然后跳转到主界面
     try {
-      if (tempData.description || tempData.content || tempData.content_third_view) {
+      if (tempData.description) {
         // 获取用户信息和角色信息，用于生成system_prompt
         let loadName = '';
         let roleName = '';
@@ -391,11 +387,11 @@ export default function InfoCollectionScreen() {
             {Math.min(currentQuestion, 4)}/4
           </Text>
         </View>
-        {!isCompleted && (
+        {/* {!isCompleted && (
           <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
             <Text style={styles.skipText}>跳过</Text>
           </TouchableOpacity>
-        )}
+        )} */}
       </View>
 
       {/* 消息列表 */}

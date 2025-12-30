@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from typing import Tuple, Optional, List
 import logging
+import uuid
 from app.models.role import Role
 from app.services.l1_bio_service import L1BioService
 
@@ -33,7 +34,7 @@ class RoleService:
     @staticmethod
     def create_role(
         db: Session,
-        uuid: str,
+        user_uuid: str,
         name: str,
         description: Optional[str] = None,
         system_prompt: str = "",
@@ -48,7 +49,7 @@ class RoleService:
         
         Args:
             db: 数据库会话
-            uuid: 角色UUID（对应loads.id）
+            user_uuid: 用户ID（loads.id），将存储到 roles.uuid 用于关联用户
             name: 角色名称（必填）
             description: 描述（可选）
             system_prompt: 系统提示词（必填，默认空字符串，如果为空且load_name存在则自动生成）
@@ -62,17 +63,21 @@ class RoleService:
             Tuple[Role对象, 错误消息, HTTP状态码]
             成功: (Role对象, None, 200)
             失败: (None, 错误消息, 状态码)
+            
+        注意：
+            - roles.id 是独立的UUID，自动生成
+            - roles.uuid 存储传入的 loads.id，用于关联用户
         """
         try:
             # 验证必填字段
-            if not uuid or not uuid.strip():
+            if not user_uuid or not user_uuid.strip():
                 return None, "UUID不能为空", 400
             
             
             # 检查UUID是否已存在
-            existing_role = db.query(Role).filter(Role.uuid == uuid.strip()).first()
+            existing_role = db.query(Role).filter(Role.uuid == user_uuid.strip()).first()
             if existing_role:
-                logger.info(f"角色已存在，UUID: {uuid}")
+                logger.info(f"角色已存在，UUID: {user_uuid}")
                 return existing_role, None, 200
             
             # 如果 system_prompt 为空且 load_name 存在，生成默认的 system_prompt
@@ -88,10 +93,13 @@ class RoleService:
                 )
             
             # 创建新角色
-            # 注意：id 和 uuid 都存储 loads.id（UUID字符串），根据实际数据库表结构
+            # roles.id 是独立的UUID，用于角色的唯一标识
+            # roles.uuid 用于关联 loads.id（用户ID）
+            role_id = str(uuid.uuid4())  # 生成新的独立UUID作为角色ID
+            
             new_role = Role(
-                id=uuid.strip(),  # id 存储 loads.id（UUID字符串，varchar(36)）
-                uuid=uuid.strip(),  # uuid 存储 loads.id（UUID字符串，varchar(64)）
+                id=role_id,  # id 是独立的UUID（varchar(36)）
+                uuid=user_uuid.strip(),  # uuid 存储 loads.id（UUID字符串，varchar(64)），用于关联用户
                 name=name.strip(),
                 description=description.strip() if description else None,
                 system_prompt=final_system_prompt,
@@ -187,11 +195,12 @@ class RoleService:
                 if not load:
                     return False, f"未找到ID为 {uuid} 的用户"
                 
-                # 创建新角色，id = uuid = loads.id
-                # 注意：此时不生成system_prompt，等到信息采集完成时才生成
+                # 创建新角色
+                # 注意：roles.id 会自动生成独立UUID，roles.uuid = loads.id
+                # 此时不生成system_prompt，等到信息采集完成时才生成
                 role, role_error, role_status = RoleService.create_role(
                     db=db,
-                    uuid=uuid,
+                    user_uuid=uuid,
                     name=name.strip(),
                     description=description.strip() if description else None,
                     system_prompt="",  # 暂时为空，等信息采集完成时再生成
@@ -309,15 +318,15 @@ class RoleService:
         content_third_view: Optional[str] = None
     ) -> Tuple[bool, Optional[str]]:
         """
-        提交信息采集数据：更新roles和l1_bios表
+        提交信息采集数据：更新roles表
         
         Args:
             db: 数据库会话
             uuid: 角色UUID（对应loads.id）
             description: 描述（职业和喜好）
             system_prompt: 系统提示词（由前端生成）
-            content: 用户最近在做什么（存入l1_bios.content）
-            content_third_view: AI生成的性格评价和MBTI（存入l1_bios.content_third_view）
+            content: 用户最近在做什么（已废弃，不再存储）
+            content_third_view: AI生成的性格评价和MBTI（已废弃，不再存储）
             
         Returns:
             Tuple[是否成功, 错误信息]
@@ -338,66 +347,6 @@ class RoleService:
             
             if not success_role:
                 return False, f"更新roles表失败: {error_role}"
-            
-            # 重新查询role以确保获取最新的信息
-            role = db.query(Role).filter(Role.uuid == uuid).first()
-            if not role:
-                return False, f"更新后无法找到UUID为 {uuid} 的角色"
-            
-            # 确保创建l1_versions和l1_bios记录（如果不存在）
-            # 注意：l1_bios.role_id 和 l1_versions.role_id 使用 roles.uuid（varchar(64)），不是 roles.id（varchar(36)）
-            from sqlalchemy import text
-            
-            # 检查是否存在该角色的l1_bios记录
-            result = db.execute(
-                text("""
-                    SELECT id, version 
-                    FROM l1_bios 
-                    WHERE role_id = :role_id
-                    ORDER BY version DESC
-                    LIMIT 1
-                """),
-                {"role_id": role.uuid}
-            ).fetchone()
-            
-            if not result:
-                # 记录不存在，需要先创建l1_versions和l1_bios记录
-                success_l1, error_l1 = L1BioService.create_initial_l1_version_and_bio(
-                    db=db,
-                    role_id=role.uuid
-                )
-                if not success_l1:
-                    logger.warning(f"创建l1_versions和l1_bios失败: {error_l1}")
-                    # 不返回错误，继续执行
-            
-            # 更新l1_bios表（content和content_third_view）
-            if content is not None or content_third_view is not None:
-                update_fields = []
-                params = {"role_id": role.uuid}
-                
-                if content is not None:
-                    update_fields.append("content = :content")
-                    params["content"] = content
-                
-                if content_third_view is not None:
-                    update_fields.append("content_third_view = :content_third_view")
-                    params["content_third_view"] = content_third_view
-                
-                if update_fields:
-                    db.execute(
-                        text(f"""
-                            UPDATE l1_bios 
-                            SET {', '.join(update_fields)}
-                            WHERE role_id = :role_id
-                            AND version = (
-                                SELECT MAX(version) 
-                                FROM l1_bios 
-                                WHERE role_id = :role_id
-                            )
-                        """),
-                        params
-                    )
-                    logger.info(f"Updated l1_bios for role_id={role.uuid}")
             
             db.commit()
             

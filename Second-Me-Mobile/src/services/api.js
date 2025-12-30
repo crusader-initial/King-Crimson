@@ -75,20 +75,103 @@ export const uploadDocument = async (file) => {
   }
 };
 
-export const sendChatMessage = async (query) => {
+// 发送聊天消息（使用新的聊天接口，需要role_id和历史消息）
+export const sendChatMessage = async (query, roleId, historyMessages = []) => {
   try {
-    const response = await api.post('/chat', { query });
-    return response.data;
+    // 构建消息列表
+    const messages = [
+      ...historyMessages.map(msg => ({
+        role: msg.sender === 'user' ? 'user' : 'assistant',
+        content: msg.text
+      })),
+      {
+        role: 'user',
+        content: query
+      }
+    ];
+
+    const response = await api.post('/chat', {
+      messages: messages,
+      metadata: {
+        role_id: roleId,
+        enable_l0_retrieval: true,
+        enable_l1_retrieval: false
+      },
+      stream: false,
+      temperature: 0.7,
+      max_tokens: 2000
+    });
+
+    // 处理响应格式
+    // 如果响应是 APIResponse 格式（有 code 和 data 字段）
+    if (response.data && response.data.code !== undefined) {
+      if (response.data.code !== 200) {
+        throw new Error(response.data.message || '请求失败');
+      }
+      // 从 data 字段中提取响应
+      const data = response.data.data;
+      if (data && data.choices && data.choices.length > 0) {
+        const answer = data.choices[0].message.content;
+        return { answer };
+      } else if (data && data.answer) {
+        return { answer: data.answer };
+      }
+    }
+    // 如果是直接的 OpenAI 格式响应
+    else if (response.data && response.data.choices && response.data.choices.length > 0) {
+      const answer = response.data.choices[0].message.content;
+      return { answer };
+    }
+    // 兼容旧格式
+    else if (response.data && response.data.data && response.data.data.answer) {
+      return response.data.data;
+    }
+    
+    throw new Error('无法解析响应');
   } catch (error) {
     console.error('Chat error:', error);
     throw error;
   }
 };
 
-// 信息采集过程中的LLM调用（不依赖role和system_prompt）
-export const sendInfoCollectionLLM = async (query) => {
+// 创建会话记录（用于信息采集界面初始化）
+export const createConversation = async (userId, participantId, participantType = 'role', title = null) => {
   try {
-    const response = await api.post('/info-collection/llm', { query });
+    const response = await api.post('/conversations', {
+      user_id: userId,
+      participant_id: participantId,
+      participant_type: participantType,
+      title: title
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Create conversation error:', error);
+    throw error;
+  }
+};
+
+// 创建消息记录
+export const createMessage = async (conversationId, senderId, receiverId, content, messageType = 'text', attachmentUrl = null) => {
+  try {
+    const response = await api.post('/messages', {
+      conversation_id: conversationId,
+      sender_id: senderId,
+      receiver_id: receiverId,
+      content: content,
+      message_type: messageType,
+      attachment_url: attachmentUrl
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Create message error:', error);
+    throw error;
+  }
+};
+
+// 信息采集过程中的LLM调用（不依赖role和system_prompt）
+export const sendInfoCollectionLLM = async (query, load_id) => {
+  try {
+    const response = await api.post('/info-collection/llm', { query, load_id });
     return response.data;
   } catch (error) {
     console.error('Info collection LLM error:', error);
@@ -228,13 +311,42 @@ export const getRoleByUuid = async (userId) => {
   }
 };
 
+// 根据会话ID获取消息列表
+export const getMessagesByConversationId = async (conversationId, limit = null, offset = 0, orderByDesc = false) => {
+  try {
+    const params = new URLSearchParams();
+    if (limit !== null) params.append('limit', limit.toString());
+    params.append('offset', offset.toString());
+    params.append('order_by_desc', orderByDesc.toString());
+    
+    const response = await api.get(`/conversations/${conversationId}/messages?${params.toString()}`);
+    return response.data;
+  } catch (error) {
+    console.error('Get messages by conversation id error:', error);
+    throw error;
+  }
+};
+
+// 获取用户的会话列表
+export const getConversations = async (limit = null, offset = 0) => {
+  try {
+    const params = new URLSearchParams();
+    if (limit !== null) params.append('limit', limit.toString());
+    params.append('offset', offset.toString());
+    
+    const response = await api.get(`/conversations?${params.toString()}`);
+    return response.data;
+  } catch (error) {
+    console.error('Get conversations error:', error);
+    throw error;
+  }
+};
+
 export const submitInfoCollection = async (userId, data) => {
   try {
     const response = await api.post('/info-collection/submit', {
       description: data.description || '',
-      system_prompt: data.system_prompt || '',
-      content: data.content || '',
-      content_third_view: data.content_third_view || ''
+      system_prompt: data.system_prompt || ''
     });
     return response.data;
   } catch (error) {
