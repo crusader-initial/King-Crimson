@@ -128,12 +128,12 @@ export default function LoginScreen() {
 
   return (
     <LinearGradient
-      colors={['#E8D5FF', '#9B7EDE', '#6B4FA0']}
+      colors={['#FFE5F0', '#E5F0FF', '#D6E8FF']}
       style={styles.container}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
     >
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" />
       
       <KeyboardAvoidingView 
         style={styles.content}
@@ -156,7 +156,7 @@ export default function LoginScreen() {
               value={phoneNumber}
               onChangeText={setPhoneNumber}
               placeholder="请输入手机号"
-              placeholderTextColor="rgba(255, 255, 255, 0.6)"
+              placeholderTextColor="rgba(0, 0, 0, 0.4)"
               keyboardType="phone-pad"
               maxLength={11}
               editable={!loading}
@@ -173,7 +173,7 @@ export default function LoginScreen() {
                 value={verificationCode}
                 onChangeText={setVerificationCode}
                 placeholder="请输入6位验证码"
-                placeholderTextColor="rgba(255, 255, 255, 0.6)"
+                placeholderTextColor="rgba(0, 0, 0, 0.4)"
                 keyboardType="number-pad"
                 maxLength={6}
                 editable={!loading}
@@ -205,7 +205,7 @@ export default function LoginScreen() {
           activeOpacity={0.8}
         >
           {loading ? (
-            <ActivityIndicator size="small" color="#6B4FA0" />
+            <ActivityIndicator size="small" color="#FF6B9D" />
           ) : (
             <Text style={styles.loginButtonText}>登录</Text>
           )}
@@ -237,13 +237,13 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 32,
-    color: '#FFFFFF',
+    color: '#333333',
     fontWeight: 'bold',
     marginBottom: 12,
   },
   subtitle: {
     fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: '#666666',
     textAlign: 'center',
   },
   inputSection: {
@@ -254,19 +254,19 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 16,
-    color: '#FFFFFF',
+    color: '#333333',
     marginBottom: 8,
     fontWeight: '500',
   },
   input: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
-    color: '#FFFFFF',
+    color: '#333333',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderColor: 'rgba(0, 0, 0, 0.1)',
   },
   codeRow: {
     flexDirection: 'row',
@@ -277,45 +277,45 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   codeButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     paddingHorizontal: 20,
     paddingVertical: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.5)',
+    borderColor: 'rgba(0, 0, 0, 0.1)',
   },
   codeButtonDisabled: {
     opacity: 0.5,
   },
   codeButtonText: {
-    color: '#FFFFFF',
+    color: '#FF6B9D',
     fontSize: 14,
     fontWeight: '500',
   },
   loginButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
     marginBottom: 20,
   },
   loginButtonDisabled: {
     opacity: 0.7,
   },
   loginButtonText: {
-    color: '#6B4FA0',
+    color: '#FF6B9D',
     fontSize: 18,
     fontWeight: 'bold',
   },
   hintText: {
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.6)',
+    color: '#999999',
     textAlign: 'center',
   },
 });

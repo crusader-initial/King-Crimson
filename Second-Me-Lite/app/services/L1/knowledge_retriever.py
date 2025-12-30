@@ -92,7 +92,7 @@ class L1KnowledgeRetriever:
     def __init__(
         self,
         embedding_service: EmbeddingService,
-        similarity_threshold: float = 0.7,
+        similarity_threshold: float = 0.5,
         max_shades: int = 3,
     ):
         """

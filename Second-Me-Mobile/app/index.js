@@ -29,8 +29,8 @@ export default function HomeScreen() {
 
   // 显示加载指示器，避免空白屏幕
   return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#E8D5FF' }}>
-      <ActivityIndicator size="large" color="#6B4FA0" />
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFE5F0' }}>
+      <ActivityIndicator size="large" color="#FF6B9D" />
     </View>
   );
 }

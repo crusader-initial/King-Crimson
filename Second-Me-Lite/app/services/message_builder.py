@@ -36,7 +36,6 @@ class MultiTurnMessageBuilder(MessageBuilder):
     def build_messages(self, db: Optional[Session] = None, context: Optional[Any] = None) -> List[Dict[str, Any]]:
         """构建用于多轮对话的消息"""
 
-        messages = self.chat_request.messages
         # 1. 构建系统提示
         builder = SystemPromptBuilder()
         
@@ -56,6 +55,18 @@ class MultiTurnMessageBuilder(MessageBuilder):
             
         builder.set_strategy(current_strategy)
         system_prompt = builder.build_prompt(self.chat_request, db, context)
-        self.chat_request.messages.append({"role": "system", "content": system_prompt})
+        
+        # 2. 构建消息列表：system 消息应该在最前面
+        # 过滤掉原有的 system 消息（如果有），避免重复
+        other_messages = [
+            msg for msg in self.chat_request.messages 
+            if msg.get('role') != 'system'
+        ]
+        
+        # 创建新的消息列表，system 消息在最前面
+        messages = []
+        if system_prompt:  # 只有当 system_prompt 不为空时才添加
+            messages.append({"role": "system", "content": system_prompt})
+        messages.extend(other_messages)
 
         return messages

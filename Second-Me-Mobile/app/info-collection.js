@@ -47,11 +47,11 @@ export default function InfoCollectionScreen() {
     },
     2: {
       text: '', // 动态生成，基于第一个问题的回答
-      nextFormat: '第三个问题应该这样生成：首先总结用户的喜好回答，然后推测一个合适的MBTI性格类型（如ISFP、INFP、ENFP等），格式必须严格为：原来"我"喜欢这些呀--{喜好描述}\n嗯，如果要猜的话，我觉得"我"的性格类型也许是{性格类型}--{性格描述}。\n这是"我"的模样'
+      nextFormat: '第三个问题应该这样生成：首先总结用户的喜好回答，然后推测一个合适的MBTI性格类型，格式必须严格为：原来"我"喜欢这些呀--{喜好描述}\n嗯，如果要猜的话，我觉得"我"的性格类型也许是{性格类型}--{性格描述}。\n这是"我"的模样'
     },
     3: {
       text: '', // 动态生成，基于前两个问题的回答
-      nextFormat: '第四个问题应该这样生成：格式必须严格为：我能感受到"我"的罗阔被稳定宇现实感包裹着。那现在告诉我吧--最近"我"都在忙些什么呢？'
+      nextFormat: '第四个问题应该这样生成：首先对用户关于性格评价和MBTI的回答进行一个简短的回应（表达理解或认同），然后提出第四个问题，格式必须严格为：{对用户回答的回应}\n我能感受到"我"的罗阔被稳定宇现实感包裹着。那现在告诉我吧--最近"我"都在忙些什么呢？\n例如：如果用户回答"是的，很准确"或"差不多"，你可以回应："嗯，看来这个性格类型确实很符合"我"呢。"或"好的，那让我们继续完善"我"的形象吧。"然后再提出第四个问题。'
     },
     4: {
       text: '', // 动态生成，基于前三个问题的回答
@@ -241,8 +241,9 @@ export default function InfoCollectionScreen() {
       // 问题3：需要包含喜好和性格推测
       return `原来"我"喜欢这些呀--${allAnswers[2]}\n嗯，如果要猜的话，我觉得"我"的性格类型也许是ISFP--艺术家型。\n这是"我"的模样`;
     } else if (questionNum === 4) {
-      // 问题4：固定格式
-      return '我能感受到"我"的罗阔被稳定宇现实感包裹着。那现在告诉我吧--最近"我"都在忙些什么呢？';
+      // 问题4：先回应，然后提问
+      const answer3 = allAnswers[3] || '';
+      return `嗯，看来这个性格类型确实很符合"我"呢。\n我能感受到"我"的罗阔被稳定宇现实感包裹着。那现在告诉我吧--最近"我"都在忙些什么呢？`;
     }
     return questionTemplates[questionNum]?.text || '';
   };
@@ -376,49 +377,29 @@ export default function InfoCollectionScreen() {
 
   return (
     <LinearGradient
-      colors={['#E8D5FF', '#9B7EDE', '#6B4FA0']}
+      colors={['#FFE5F0', '#E5F0FF', '#D6E8FF']}
       style={styles.container}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
     >
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" />
       
-      {/* 顶部装饰圆形 */}
-      <View style={styles.decorativeCircle} />
-
       {/* 顶部操作栏 */}
       <View style={styles.topBar}>
-        <View style={styles.topBarLeft}>
-          {isTyping && (
-            <View style={styles.typingIndicator}>
-              <View style={styles.typingDot} />
-              <Text style={styles.typingText}>输入中...</Text>
-            </View>
-          )}
-        </View>
-        {/* 进度圆球 - 居中显示 */}
         <View style={styles.progressContainer}>
-          <View style={styles.progressCircle}>
-            <Text style={styles.progressText}>
-              {Math.min(currentQuestion, 4)}/4
-            </Text>
-          </View>
+          <Text style={styles.progressText}>
+            {Math.min(currentQuestion, 4)}/4
+          </Text>
         </View>
-        <View style={styles.topBarRight}>
-          {!isCompleted && (
-            <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
-              <Text style={styles.skipText}>跳过</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        {!isCompleted && (
+          <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
+            <Text style={styles.skipText}>跳过</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* 消息列表 */}
-      <KeyboardAvoidingView 
-        style={styles.chatContainer}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={100}
-      >
+      <View style={styles.chatContainer}>
         <FlatList
           ref={flatListRef}
           data={messages}
@@ -426,9 +407,15 @@ export default function InfoCollectionScreen() {
           keyExtractor={item => item.id}
           contentContainerStyle={styles.messageList}
           showsVerticalScrollIndicator={false}
+          style={styles.flatList}
         />
+      </View>
 
-        {/* 输入区域或下一步按钮 */}
+      {/* 输入区域或下一步按钮 - 固定在底部 */}
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
         {isCompleted ? (
           <View style={styles.inputContainer}>
             <TouchableOpacity 
@@ -447,7 +434,7 @@ export default function InfoCollectionScreen() {
                 value={inputText}
                 onChangeText={setInputText}
                 placeholder="塑造你的第二自我..."
-                placeholderTextColor="rgba(255, 255, 255, 0.6)"
+                placeholderTextColor="rgba(0, 0, 0, 0.4)"
                 multiline
                 maxLength={500}
                 onFocus={() => setIsInputFocused(true)}
@@ -461,7 +448,7 @@ export default function InfoCollectionScreen() {
                   disabled={!inputText.trim() || loading}
                 >
                   {loading ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
+                    <ActivityIndicator size="small" color="#FF6B9D" />
                   ) : (
                     <Text style={styles.sendIcon}>📤</Text>
                   )}
@@ -490,16 +477,6 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: 50,
   },
-  decorativeCircle: {
-    position: 'absolute',
-    top: 80,
-    alignSelf: 'center',
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    opacity: 0.6,
-  },
   topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -507,86 +484,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 10,
-    zIndex: 1,
-    position: 'relative',
-  },
-  topBarLeft: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
   },
   progressContainer: {
-    position: 'absolute',
-    left: '50%',
-    marginLeft: -30, // 圆球宽度的一半，用于居中
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 2,
-  },
-  progressCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
   },
   progressText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: 'bold',
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  topBarRight: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-  },
-  typingIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 15,
-  },
-  typingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#FFFFFF',
-    marginRight: 6,
-  },
-  typingText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-  },
-  skipButton: {
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-  },
-  skipText: {
-    color: '#FFFFFF',
+    color: '#333333',
     fontSize: 16,
     fontWeight: '500',
   },
+  skipButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  skipText: {
+    color: '#FF6B9D',
+    fontSize: 14,
+  },
   chatContainer: {
+    flex: 1,
+  },
+  flatList: {
     flex: 1,
   },
   messageList: {
     paddingHorizontal: 20,
     paddingTop: 20,
-    paddingBottom: 10,
+    paddingBottom: 20,
   },
   messageContainer: {
     marginBottom: 15,
@@ -599,7 +524,6 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   messageBubble: {
-    maxWidth: '75%',
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 20,
@@ -607,40 +531,43 @@ const styles = StyleSheet.create({
   userBubble: {
     backgroundColor: 'rgba(255, 255, 255, 0.9)',
     borderBottomRightRadius: 5,
+    maxWidth: '75%',
   },
   aiBubble: {
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    backgroundColor: '#FFFFFF',
     borderBottomLeftRadius: 5,
+    maxWidth: '95%',
   },
   messageText: {
     fontSize: 16,
     lineHeight: 22,
   },
   userText: {
-    color: '#6B4FA0',
+    color: '#FF6B9D',
   },
   aiText: {
-    color: '#FFFFFF',
+    color: '#333333',
   },
   inputContainer: {
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingBottom: Platform.OS === 'ios' ? 20 : 10,
     paddingTop: 10,
+    backgroundColor: 'transparent',
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: '#FFFFFF',
     borderRadius: 25,
     paddingHorizontal: 15,
     paddingVertical: 10,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderColor: 'rgba(0, 0, 0, 0.1)',
   },
   input: {
     flex: 1,
-    color: '#FFFFFF',
+    color: '#333333',
     fontSize: 16,
     maxHeight: 100,
     paddingRight: 10,
@@ -662,22 +589,17 @@ const styles = StyleSheet.create({
     fontSize: 20,
   },
   nextStepButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    borderRadius: 25,
-    paddingVertical: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingVertical: 14,
     paddingHorizontal: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
   },
   nextStepText: {
-    color: '#6B4FA0',
-    fontSize: 18,
-    fontWeight: 'bold',
+    color: '#FF6B9D',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

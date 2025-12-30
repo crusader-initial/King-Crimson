@@ -105,3 +105,30 @@ class GenerateL1Request(BaseModel):
     """生成L1数据请求模型"""
     role_id: str  # 角色ID，用于获取该角色的所有文档并生成L1数据
 
+class AdvancedChatRequest(BaseModel):
+    """高级聊天请求模型 - 多阶段迭代优化"""
+    requirement: str = Field(..., description="用户的大致需求")
+    max_iterations: int = Field(default=3, ge=1, le=10, description="最大迭代优化次数")
+    temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="模型生成温度")
+    enable_l0_retrieval: bool = Field(default=True, description="是否启用L0知识检索")
+    enable_l1_retrieval: bool = Field(default=True, description="是否启用L1知识检索")
+    role_id: Optional[str] = Field(default=None, description="角色ID，用于系统定制和知识检索")
+    model: Optional[str] = Field(default=None, description="模型标识符")
+    max_tokens: int = Field(default=2000, ge=100, le=8000, description="最大生成token数")
+
+
+class ValidationResult(BaseModel):
+    """验证结果模型"""
+    is_valid: bool = Field(..., description="验证是否通过")
+    feedback: str = Field(default="", description="验证反馈信息")
+
+
+class AdvancedChatResponse(BaseModel):
+    """高级聊天响应模型"""
+    enhanced_requirement: str = Field(..., description="增强后的需求")
+    solution: str = Field(..., description="生成的解决方案")
+    validation_history: List[ValidationResult] = Field(default_factory=list, description="验证历史")
+    final_format: Optional[str] = Field(default=None, description="最终格式化的解决方案")
+    final_response: Optional[Any] = Field(default=None, description="最终响应（支持流式）")
+    iterations_used: int = Field(..., description="实际使用的迭代次数")
+

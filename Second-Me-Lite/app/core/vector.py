@@ -375,8 +375,7 @@ def get_document_embedding(db: Session, document_id: int) -> Optional[List[float
 
 def search_similar_chunks(db: Session, query_embedding: List[float], limit: int = 3) -> List[Dict[str, Any]]:
     """
-    在 PostgreSQL 中搜索相似的 chunks
-    注意：新表结构中没有 embedding 字段，此函数可能需要根据实际向量存储位置调整
+    在 PostgreSQL 中使用 pgvector 搜索相似的 chunks
     
     Args:
         db: 数据库会话
@@ -384,34 +383,50 @@ def search_similar_chunks(db: Session, query_embedding: List[float], limit: int 
         limit: 返回的结果数量
         
     Returns:
-        相似 chunks 的列表，每个包含 id, content, document_id, similarity
+        相似 chunks 的列表，每个包含 id, content, document_id, tags, topic, similarity
     """
-    # 将查询向量转换为字符串格式
-    query_vector_str = '[' + ','.join(map(str, query_embedding)) + ']'
-    
-    # 注意：如果向量存储在其他表，需要调整查询
-    # 这里假设向量可能还在某个地方，或者需要从其他表关联查询
-    # 暂时返回空列表，需要根据实际向量存储位置实现
-    query = text("""
-        SELECT id, content, document_id, tags, topic
-        FROM chunk
-        WHERE has_embedding = true
-        LIMIT :limit
-    """)
-    
-    results = db.execute(query, {
-        "limit": limit
-    })
-    
-    chunks = []
-    for row in results:
-        chunks.append({
-            "id": row.id,
-            "content": row.content,
-            "document_id": row.document_id,
-            "tags": row.tags,
-            "topic": row.topic,
-            "similarity": 0.0  # 需要根据实际向量计算相似度
+    try:
+        # 将查询向量转换为 PostgreSQL 的 vector 类型格式
+        query_vector_str = '[' + ','.join(map(str, query_embedding)) + ']'
+        
+        # 使用 pgvector 的余弦距离操作符 <=> 进行相似度搜索
+        # 注意：<=> 返回的是余弦距离（0-2），需要转换为相似度（1-(-1)）
+        # 余弦相似度 = 1 - 余弦距离
+        # 由于 bge-m3 模型已经归一化，余弦距离范围是 0-2，相似度范围是 1-(-1)
+        query = text("""
+            SELECT 
+                c.id, 
+                c.content, 
+                c.document_id, 
+                c.tags, 
+                c.topic,
+                1 - (ce.embedding <=> CAST(:query_vector AS vector)) as similarity
+            FROM chunk c
+            INNER JOIN chunk_embedding ce ON c.id = ce.chunk_id
+            WHERE c.has_embedding = true
+            ORDER BY ce.embedding <=> CAST(:query_vector AS vector)
+            LIMIT :limit
+        """)
+        
+        results = db.execute(query, {
+            "query_vector": query_vector_str,
+            "limit": limit
         })
-    
-    return chunks
+        
+        chunks = []
+        for row in results:
+            chunks.append({
+                "id": row.id,
+                "content": row.content,
+                "document_id": row.document_id,
+                "tags": row.tags,
+                "topic": row.topic,
+                "similarity": float(row.similarity) if row.similarity is not None else 0.0
+            })
+        
+        logger.debug(f"Found {len(chunks)} similar chunks for query")
+        return chunks
+        
+    except Exception as e:
+        logger.error(f"Error searching similar chunks: {str(e)}", exc_info=True)
+        return []

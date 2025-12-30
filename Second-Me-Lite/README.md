@@ -214,6 +214,74 @@ python run.py
         ```
     *   响应: 返回创建结果
 
-#### 其他接口
+#### 对话接口
 
-*   **POST /api/chat**: 发送对话请求 `{"query": "你的问题"}`。
+*   **POST /api/chat**: 聊天接口（OpenAI API 兼容格式）
+    *   功能: 基于 RAG 的对话接口，支持多轮对话和知识检索
+    *   请求体: JSON 格式，兼容 OpenAI Chat Completions API
+        ```json
+        {
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Hello, who are you?"},
+                {"role": "assistant", "content": "I am a helpful assistant."},
+                {"role": "user", "content": "What can you do for me?"}
+            ],
+            "metadata": {
+                "enable_l0_retrieval": true,
+                "enable_l1_retrieval": false,
+                "role_id": "uuid-string"
+            },
+            "stream": false,
+            "model": "gpt-3.5-turbo",
+            "temperature": 0.1,
+            "max_tokens": 2000
+        }
+        ```
+    *   请求参数说明:
+        - `messages`: List[Dict[str, str]]，标准的 OpenAI 消息列表（必需）
+        - `metadata`: Dict[str, Any]（必需），额外参数：
+            - `role_id`: str，角色 UUID（必需，用于系统定制）
+            - `enable_l0_retrieval`: bool，是否启用知识检索（可选）
+            - `enable_l1_retrieval`: bool，是否启用高级知识检索（可选）
+        - `stream`: bool，是否流式响应（默认: True，支持流式和非流式两种模式）
+        - `model`: str，模型标识符（可选，默认使用配置的模型）
+        - `temperature`: float，控制随机性（默认: 0.1）
+        - `max_tokens`: int，最大生成 token 数（默认: 2000）
+    *   响应: 标准 OpenAI Chat Completions API 格式
+        - **流式响应** (`stream=true`): Server-Sent Events (SSE) 格式
+            - Content-Type: `text/event-stream`
+            - 每个 chunk 格式:
+                ```
+                data: {"id":"chatcmpl-xxx","object":"chat.completion.chunk","created":1234567890,"model":"gpt-3.5-turbo","choices":[{"index":0,"delta":{"content":"内容片段"},"finish_reason":null}]}
+                
+                ```
+            - 最后一个事件: `data: [DONE]`
+        - **非流式响应** (`stream=false`): 完整 JSON 对象
+            ```json
+            {
+                "id": "chatcmpl-xxx",
+                "object": "chat.completion",
+                "created": 1234567890,
+                "model": "gpt-3.5-turbo",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": "回复内容"
+                        },
+                        "finish_reason": "stop"
+                    }
+                ]
+            }
+            ```
+    *   说明: 
+        - `metadata.role_id` 是必需字段，如果缺失将返回 400 错误
+        - 支持流式响应（`stream=true`）和非流式响应（`stream=false`）两种模式
+        - 流式响应使用 Server-Sent Events (SSE) 格式，兼容 OpenAI API
+        - **知识检索机制**:
+            - `enable_l0_retrieval=true` 时，系统会使用向量相似度搜索从知识库中检索相关内容
+            - 使用 PostgreSQL pgvector 扩展进行余弦相似度搜索，基于查询文本的嵌入向量查找最相似的 chunks
+            - 检索结果按相似度分数排序，只返回相似度高于阈值（默认 0.5）的内容
+            - 检索到的知识内容会自动添加到系统提示词中，增强 LLM 的上下文理解

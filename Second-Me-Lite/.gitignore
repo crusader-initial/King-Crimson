@@ -14,3 +14,6 @@ build/
 htmlcov/
 .env
 .DS_Store
+
+# User uploaded files
+resources/

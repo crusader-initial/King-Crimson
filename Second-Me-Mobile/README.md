@@ -44,7 +44,32 @@ npx expo start
 *   按 `i` 在 iOS 模拟器运行
 *   或使用 Expo Go App 扫描二维码在真机运行
 
-### 3. 配置后端连接
+### 3. Android 原生构建配置
+
+如果使用 `npx expo run:android` 进行原生构建，需要配置 Android SDK 路径：
+
+**方法一：创建 local.properties 文件（推荐）**
+
+在 `android/local.properties` 文件中设置 SDK 路径（该文件已自动生成，通常不需要手动创建）：
+
+```properties
+sdk.dir=D\:\\Users\\你的用户名\\AppData\\Local\\Android\\Sdk
+```
+
+**方法二：设置环境变量**
+
+设置 `ANDROID_HOME` 环境变量指向 Android SDK 目录：
+- Windows: `%LOCALAPPDATA%\Android\Sdk`
+- macOS/Linux: `~/Library/Android/sdk` 或 `$HOME/Android/Sdk`
+
+**常见问题：**
+
+如果遇到 "SDK location not found" 错误，请检查：
+1. 是否已安装 Android Studio 和 Android SDK
+2. `local.properties` 文件中的路径是否正确（Windows 路径需要使用双反斜杠 `\\`）
+3. 路径中是否包含中文字符（建议避免）
+
+### 4. 配置后端连接
 
 默认情况下，应用会尝试连接本地后端：
 *   **Android**: `http://10.0.2.2:8000/api` (模拟器映射宿主机 localhost)
@@ -58,6 +83,10 @@ npx expo start
 
 1. **欢迎页面**: 应用启动后进入欢迎页面，展示"第二自我"的介绍
 2. **名字输入**: 用户输入自己的名字
+   - 采用现代化的渐变背景和动画效果
+   - 包含精美的图标设计和交互反馈
+   - 输入框支持聚焦动画和视觉反馈
+   - 按钮具有渐变效果和阴影，提供良好的视觉层次
 3. **信息采集**: 与AI对话，采集用户信息来塑造"第二自我"
    - 支持文本输入和语音输入（语音功能待实现）
    - 右上角有"跳过"按钮，可跳过信息采集直接进入主界面
@@ -78,9 +107,19 @@ npx expo start
     *   发送消息，AI 将基于 RAG (检索增强生成) 回复你。
     *   聊天界面支持自动滚动和加载状态显示。
 
+## 设计风格
+
+应用采用**简洁**的设计风格，配合**浅粉色混浅蓝色**的配色方案：
+*   **设计理念**: 简洁、清爽、专注于内容
+*   **主背景渐变**: 从浅粉色 (#FFE5F0) 过渡到浅蓝色 (#E5F0FF, #D6E8FF)
+*   **按钮样式**: 简洁的白色背景按钮，粉色文字 (#FF6B9D)
+*   **输入框**: 半透明白色背景，简洁边框
+*   **去除装饰**: 无复杂动画、光晕、装饰性元素，保持界面简洁
+
 ## 技术栈
 
 *   React Native (Expo)
 *   Expo Router (基于文件的路由)
 *   Axios (网络请求)
 *   Expo Document Picker (文件选择)
+*   Expo Linear Gradient (渐变背景)

@@ -113,7 +113,7 @@ export default function ChatScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#FFE5F0',
   },
   messageList: {
     padding: 15,
@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   userBubble: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#FFB6C1',
     alignSelf: 'flex-end',
     borderBottomRightRadius: 5,
   },
@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   sendButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#B6D9FF',
     borderRadius: 20,
     paddingHorizontal: 20,
     paddingVertical: 10,

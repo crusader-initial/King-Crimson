@@ -75,7 +75,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 20,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#FFE5F0',
   },
   card: {
     backgroundColor: '#fff',
@@ -110,12 +110,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#fafafa',
   },
   uploadText: {
-    color: '#007AFF',
+    color: '#FF6B9D',
     fontSize: 16,
     fontWeight: '500',
   },
   button: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#B6D9FF',
     padding: 15,
     borderRadius: 10,
     alignItems: 'center',
