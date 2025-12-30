@@ -149,3 +149,10 @@ class AdvancedChatResponse(BaseModel):
     final_response: Optional[Any] = Field(default=None, description="最终响应（支持流式）")
     iterations_used: int = Field(..., description="实际使用的迭代次数")
 
+class ExportMessagesToDocumentRequest(BaseModel):
+    """将消息导出为文档的请求模型"""
+    load_id: Optional[str] = Field(default=None, description="用户ID（loads.id），与 role_id 二选一")
+    role_id: Optional[str] = Field(default=None, description="角色ID（roles.id），与 load_id 二选一")
+    title: Optional[str] = Field(default=None, description="文档标题（可选，默认自动生成）")
+    description: Optional[str] = Field(default=None, description="文档描述（可选）")
+

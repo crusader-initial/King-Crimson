@@ -34,10 +34,15 @@ flutter run
 
 ### 3. 后端配置
 默认情况下，应用会尝试连接本地后端：
-*   **Android**: `http://10.0.2.2:8000/api`
-*   **iOS**: `http://localhost:8000/api`
+*   **Android 模拟器**: `http://10.0.2.2:8001/api` (模拟器映射宿主机的 localhost)
+*   **iOS 模拟器**: `http://localhost:8001/api`
 
-如果后端运行在其他地址，请修改 `lib/src/services/api_service.dart` 中的 `baseUrl`。
+**注意**: 
+- 前端默认连接本地后端（`localhost:8001`），后端运行在 `0.0.0.0:8001` 允许其他电脑访问
+- 如需连接其他电脑的后端，请修改 `lib/src/services/api_service.dart` 中的 `baseUrl` 为对应的 IP 地址（例如：`http://192.168.1.100:8001/api`）
+- 如需在真机上测试并连接本地后端，需要将 `baseUrl` 配置为你电脑的局域网 IP 地址
+
+如果后端运行在其他地址或端口，请修改 `lib/src/services/api_service.dart` 中的 `baseUrl`。
 
 ## 功能说明
 

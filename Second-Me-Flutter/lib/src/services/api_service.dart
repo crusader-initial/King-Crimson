@@ -7,9 +7,10 @@ class ApiService {
 
   ApiService() {
     // Android Emulator uses 10.0.2.2, iOS Simulator uses localhost
+    // 后端运行在 127.0.0.1:8001，仅允许本地访问
     final baseUrl = Platform.isAndroid 
-        ? 'http://10.0.2.2:8000/api' 
-        : 'http://localhost:8000/api';
+        ? 'http://10.0.2.2:8001/api' 
+        : 'http://localhost:8001/api';
 
     _dio = Dio(BaseOptions(
       baseUrl: baseUrl,

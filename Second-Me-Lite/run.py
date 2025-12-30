@@ -33,7 +33,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
         "run:app",  # 使用模块字符串以支持 reload 功能
-        host="0.0.0.0",
+        host="0.0.0.0",  # 允许其他电脑访问（前端默认连接本地 localhost）
         port=8001,
         reload=True
     )

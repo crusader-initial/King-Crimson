@@ -22,12 +22,14 @@ try {
 }
 
 // 后端 API 地址配置
-// 后端运行在 0.0.0.0:8001，使用电脑的局域网 IP
-// Android 模拟器使用 10.0.2.2 访问宿主机
-// 真机使用电脑的局域网 IP 地址
+// 后端运行在 0.0.0.0:8001，允许其他电脑访问
+// 前端默认连接本地后端（localhost）
+// Android 模拟器使用 10.0.2.2 访问宿主机的 localhost
+// iOS 模拟器使用 localhost
+// 如需连接其他电脑的后端，请修改为对应的 IP 地址
 const BASE_URL = Platform.OS === 'android' 
-  ? 'http://100.84.194.66:8001/api'  // Android 真机或模拟器（已配置正确的 IP）
-  : 'http://100.84.194.76:8003/api';
+  ? 'http://10.0.2.2:8001/api'  // Android 模拟器访问宿主机
+  : 'http://localhost:8001/api';  // iOS 模拟器
 
 const api = axios.create({
   baseURL: BASE_URL,

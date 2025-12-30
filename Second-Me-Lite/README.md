@@ -78,11 +78,17 @@ psql -U postgres -d second_me_lite -f migrations/create_chunk_embedding_table.sq
 python run.py
 ```
 
-服务将在 `http://localhost:8001` 启动。
+服务将在 `http://0.0.0.0:8001` 启动（允许其他电脑访问）。
+
+**注意**: 
+- 后端配置为允许外部访问（`host="0.0.0.0"`），其他电脑可以通过网络访问此服务
+- 前端默认连接本地后端（`localhost:8001`），如需连接其他电脑的后端，请修改前端配置中的 API 地址
+- 本地访问地址: `http://localhost:8001` 或 `http://127.0.0.1:8001`
+- 局域网访问地址: `http://<你的局域网IP>:8001`
 
 ### 5. API 使用指南
 
-访问 Swagger UI 文档: `http://localhost:8000/docs`
+访问 Swagger UI 文档: `http://localhost:8001/docs` 或 `http://127.0.0.1:8001/docs`
 
 #### 文件管理接口
 
@@ -91,6 +97,25 @@ python run.py
     *   功能: 文件格式验证、重复检查（通过文件名和大小）、保存到磁盘、自动切片和生成向量
     *   请求: `multipart/form-data`，字段 `file`（文件）和可选的 `metadata`（JSON 字符串）
     *   响应: 返回文档信息和处理结果
+    
+*   **POST /api/file/export-messages**: 将消息导出为文档并上传
+    *   功能: 根据 `load_id` 或 `role_id` 获取所有相关的消息，组合成文档后走上传逻辑
+    *   请求体: JSON 格式
+        ```json
+        {
+            "load_id": "user-uuid",  // 或
+            "role_id": "role-uuid",  // 与 load_id 二选一
+            "title": "聊天记录导出",  // 可选，文档标题
+            "description": "从消息导出的文档"  // 可选，文档描述
+        }
+        ```
+    *   响应: 返回文档信息和处理结果（与文件上传接口相同）
+    *   说明:
+        - `load_id` 和 `role_id` 必须提供其中一个，不能同时提供
+        - 如果提供 `load_id`，会获取该用户的所有会话和消息
+        - 如果提供 `role_id`，会获取该角色相关的所有会话和消息
+        - 消息会按时间顺序格式化，包含发送者、时间戳和内容
+        - 生成的文档会自动调用文档上传逻辑，保存到数据库并关联到对应的角色
     
 *   **DELETE /api/file/{filename}**: 文件删除接口
     *   功能: 删除文件记录、相关 chunks、向量数据以及物理文件
