@@ -8,9 +8,11 @@ import {
   FlatList, 
   KeyboardAvoidingView, 
   Platform,
-  ActivityIndicator 
+  ActivityIndicator,
+  Keyboard
 } from 'react-native';
 import { useNavigation } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { 
   sendChatMessage, 
   getRoleByUuid, 
@@ -23,6 +25,8 @@ import { useUser } from '../src/contexts/UserContext';
 export default function ChatScreen() {
   const { userId } = useUser();
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -203,6 +207,16 @@ export default function ChatScreen() {
     }
   }, [messages, loadingHistory]);
 
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
   if (loadingHistory) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
@@ -211,6 +225,8 @@ export default function ChatScreen() {
       </View>
     );
   }
+
+  const bottomInset = keyboardVisible ? 0 : insets.bottom;
 
   return (
     <KeyboardAvoidingView 
@@ -223,11 +239,11 @@ export default function ChatScreen() {
         data={messages}
         renderItem={renderMessage}
         keyExtractor={item => item.id}
-        contentContainerStyle={styles.messageList}
+        contentContainerStyle={[styles.messageList, { paddingBottom: 20 + bottomInset }]}
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
       />
 
-      <View style={styles.inputContainer}>
+      <View style={[styles.inputContainer, { paddingBottom: 10 + bottomInset }]}>
         <TextInput
           style={styles.input}
           value={inputText}

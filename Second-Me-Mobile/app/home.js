@@ -5,11 +5,13 @@ import {
   TouchableOpacity, 
   StatusBar
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
 const BOTTOM_NAV_HEIGHT = 80; // 底部导航栏高度
 
 export default function HomeScreen() {
+  const insets = useSafeAreaInsets();
   const handleChatPress = () => {
     // 点击聊天框，进入完全聊天界面
     router.push('/chat');
@@ -31,7 +33,7 @@ export default function HomeScreen() {
       <StatusBar barStyle="dark-content" />
       
       {/* "我"栏目内容区域 */}
-      <View style={styles.contentArea}>
+      <View style={[styles.contentArea, { paddingBottom: BOTTOM_NAV_HEIGHT + 100 + insets.bottom }]}>
         {/* 这里可以添加"我"tab的具体内容 */}
       </View>
       
@@ -59,7 +61,15 @@ export default function HomeScreen() {
         </View>
 
         {/* 底部导航栏 */}
-        <View style={styles.bottomNav}>
+        <View
+          style={[
+            styles.bottomNav,
+            {
+              height: BOTTOM_NAV_HEIGHT + insets.bottom,
+              paddingBottom: 20 + insets.bottom,
+            },
+          ]}
+        >
           <TouchableOpacity 
             style={[styles.navItem, styles.navItemActive]}
             onPress={() => handleTabPress('me')}

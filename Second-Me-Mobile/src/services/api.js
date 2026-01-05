@@ -23,13 +23,33 @@ try {
 
 // 后端 API 地址配置
 // 后端运行在 0.0.0.0:8001，允许其他电脑访问
-// 前端默认连接本地后端（localhost）
-// Android 模拟器使用 10.0.2.2 访问宿主机的 localhost
-// iOS 模拟器使用 localhost
-// 如需连接其他电脑的后端，请修改为对应的 IP 地址
-const BASE_URL = Platform.OS === 'android' 
-  ? 'http://10.0.2.2:8001/api'  // Android 模拟器访问宿主机
-  : 'http://localhost:8001/api';  // iOS 模拟器
+// 
+// 配置说明：
+// 1. 真机调试：使用本机IP地址（如：192.168.1.100），需要确保手机和电脑在同一WiFi网络
+// 2. Android 模拟器：使用 10.0.2.2 访问宿主机
+// 3. iOS 模拟器：使用 localhost
+//
+// 获取本机IP方法（macOS）：
+// 在终端运行：ifconfig | grep "inet " | grep -v 127.0.0.1
+// 或者查看：系统设置 -> 网络 -> 高级 -> TCP/IP -> IPv4地址
+//
+// 请将下面的 YOUR_LOCAL_IP 替换为你的本机IP地址（真机调试时使用）
+// 如果使用模拟器，可以保持为 null，会自动使用对应的模拟器地址
+
+const LOCAL_IP = '100.84.194.35'; // 例如：'192.168.1.100'，真机调试时填写，模拟器时设为 null
+
+// 根据配置选择API地址
+let BASE_URL;
+if (LOCAL_IP) {
+  // 使用配置的本机IP（真机调试）
+  BASE_URL = `http://${LOCAL_IP}:8001/api`;
+} else if (Platform.OS === 'android') {
+  // Android 模拟器
+  BASE_URL = 'http://10.0.2.2:8001/api';
+} else {
+  // iOS 模拟器
+  BASE_URL = 'http://localhost:8001/api';
+}
 
 const api = axios.create({
   baseURL: BASE_URL,
