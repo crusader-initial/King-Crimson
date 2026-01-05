@@ -83,22 +83,24 @@ class LoadService:
             return None, f"获取或创建用户失败: {str(e)}", 500, False
     
     @staticmethod
-    def get_load_by_id(db: Session, load_id: str) -> Tuple[Optional[Load], Optional[str], int]:
+    def get_load_by_id(db: Session, load_id) -> Tuple[Optional[Load], Optional[str], int]:
         """
         根据ID获取用户
         
         Args:
             db: 数据库会话
-            load_id: 用户ID
+            load_id: 用户ID（整数，可以是 int 或 str）
             
         Returns:
             Tuple[Load对象, 错误消息, HTTP状态码]
         """
         try:
-            load = db.query(Load).filter(Load.id == load_id).first()
+            # 确保 load_id 是整数类型
+            load_id_int = int(load_id) if not isinstance(load_id, int) else load_id
+            load = db.query(Load).filter(Load.id == load_id_int).first()
             
             if not load:
-                return None, f"未找到ID为 {load_id} 的用户", 404
+                return None, f"未找到ID为 {load_id_int} 的用户", 404
             
             return load, None, 200
             
@@ -110,7 +112,7 @@ class LoadService:
     @staticmethod
     def update_load_by_id(
         db: Session,
-        load_id: str,
+        load_id,  # 用户ID（整数，可以是 int 或 str）
         name: Optional[str] = None,
         description: Optional[str] = None,
         email: Optional[str] = None,
@@ -164,14 +166,16 @@ class LoadService:
             load.updated_at = datetime.utcnow()
             
             db.commit()
-            logger.info(f"成功更新用户 {load_id} 的信息")
+            # 确保 load_id 是整数类型
+            load_id_int = int(load_id) if not isinstance(load_id, int) else load_id
+            logger.info(f"成功更新用户 {load_id_int} 的信息")
             
-            # 如果更新了 name，同步更新 roles 表中对应 uuid 的记录
+            # 如果更新了 name，同步更新 roles 表中对应 load_id 的记录
             # 注意：更新description时不自动更新system_prompt，需要单独调用generate_system_prompt
             if name is not None:
                 success_role, error_role, role_id = RoleService.update_role_by_uuid(
                     db=db,
-                    uuid=load_id,
+                    uuid=load_id_int,
                     name=name.strip() if name is not None else None
                 )
                 if not success_role:
@@ -205,7 +209,7 @@ class LoadService:
     @staticmethod
     def update_description_only(
         db: Session,
-        load_id: str,
+        load_id,  # 用户ID（整数，可以是 int 或 str）
         description: str
     ) -> Tuple[bool, Optional[str]]:
         """
@@ -232,7 +236,9 @@ class LoadService:
             load.updated_at = datetime.utcnow()
             
             db.commit()
-            logger.info(f"成功更新用户 {load_id} 的描述（不更新system_prompt）")
+            # 确保 load_id 是整数类型
+            load_id_int = int(load_id) if not isinstance(load_id, int) else load_id
+            logger.info(f"成功更新用户 {load_id_int} 的描述（不更新system_prompt）")
             return True, None
         except Exception as e:
             db.rollback()

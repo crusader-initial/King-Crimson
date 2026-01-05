@@ -6,6 +6,7 @@ from enum import Enum
 import numpy as np
 import json
 import logging
+from sqlalchemy import text
 
 # 导入数据库相关
 from app.core.database import DatabaseSession
@@ -571,21 +572,46 @@ def __store_clusters(session, clusters: Dict[str, Any], version: int):
         memory_ids = [str(m.get("memoryId", "")) for m in memory_list]
         
         # 获取聚类中心（如果有）
+        # 使用和 chunk_embedding 相同的方式：原始 SQL + CAST
         cluster_center = None
+        cluster_center_str = None
         if "centerEmbedding" in cluster:
-            cluster_center = json.dumps(cluster["centerEmbedding"])
+            cluster_center = cluster["centerEmbedding"]
+            if cluster_center:
+                # 将向量转换为 PostgreSQL 的 vector 类型格式
+                # 格式: '[0.1,0.2,0.3,...]'
+                cluster_center_str = '[' + ','.join(map(str, cluster_center)) + ']'
         # elif "center" in cluster:  # 向后兼容
-        #     cluster_center = json.dumps(cluster["center"])
+        #     cluster_center = cluster["center"]
+        #     if cluster_center:
+        #         cluster_center_str = '[' + ','.join(map(str, cluster_center)) + ']'
         # elif "clusterCenter" in cluster:  # 向后兼容
-        #     cluster_center = json.dumps(cluster["clusterCenter"])
+        #     cluster_center = cluster["clusterCenter"]
+        #     if cluster_center:
+        #         cluster_center_str = '[' + ','.join(map(str, cluster_center)) + ']'
         
-        new_cluster = L1Cluster(
-            version=version,
-            cluster_id=str(cluster.get("clusterId", f"cluster_{idx}")),
-            memory_ids=json.dumps(memory_ids) if memory_ids else None,
-            cluster_center=cluster_center
-        )
-        session.add(new_cluster)
+        # 使用原始 SQL 插入，和 chunk_embedding 表的方式一致
+        if cluster_center_str:
+            query = text("""
+                INSERT INTO l1_clusters (version, cluster_id, memory_ids, cluster_center, create_time)
+                VALUES (:version, :cluster_id, :memory_ids, CAST(:cluster_center AS vector), :create_time)
+            """)
+            session.execute(query, {
+                "version": version,
+                "cluster_id": str(cluster.get("clusterId", f"cluster_{idx}")),
+                "memory_ids": json.dumps(memory_ids) if memory_ids else None,
+                "cluster_center": cluster_center_str,
+                "create_time": datetime.utcnow()
+            })
+        else:
+            # 如果没有向量，使用 ORM 方式插入
+            new_cluster = L1Cluster(
+                version=version,
+                cluster_id=str(cluster.get("clusterId", f"cluster_{idx}")),
+                memory_ids=json.dumps(memory_ids) if memory_ids else None,
+                cluster_center=None
+            )
+            session.add(new_cluster)
 
 
 def __store_chunk_topics(session, chunk_topics: Dict[str, Any], version: int):

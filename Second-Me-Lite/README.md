@@ -69,6 +69,7 @@ psql -U postgres -d second_me_lite -f migrations/create_chunk_embedding_table.sq
 - `migrations/rebuild_conversation_tables.sql` - **重要**：重建会话和消息表结构（会删除旧表数据）
 - `migrations/create_document_embedding_table.sql` - 文档级别的向量表
 - `migrations/create_chunk_embedding_table.sql` - chunk 级别的向量表
+- `migrations/alter_l1_clusters_cluster_center_to_vector.sql` - 将 l1_clusters 表的 cluster_center 字段从 text 改为 vector(1536) 类型
 
 **注意**: 
 - **会话和消息表结构已更新**：新的表结构包括：
@@ -82,21 +83,68 @@ psql -U postgres -d second_me_lite -f migrations/create_chunk_embedding_table.sq
 
 ### 4. 运行服务
 
+#### 方式一：使用部署脚本（推荐）
+
+使用独立的环境启动脚本：
+
+```bash
+# 启动测试环境
+./deploy_scripts/startenv_beta.sh
+
+# 启动生产环境
+./deploy_scripts/startenv_prod.sh
+```
+
+**脚本功能**：
+- 自动加载对应环境的配置文件（`.env.prod` 或 `.env.beta`，不存在则使用 `.env`）
+- 自动检查 Python 环境和依赖
+- 生产环境：多 worker 进程，INFO 日志级别，优先使用 gunicorn
+- 测试环境：单进程 + 热重载，DEBUG 日志级别
+- 适配公司发布平台，支持自定义 Python/pip 路径和内部 PyPI 镜像源
+
+**公司发布平台配置示例**：
+
+```bash
+# 设置 conda 路径和公司镜像源
+export PYTHON_CMD="/root/anaconda3/bin/python3"
+export PIP_CMD="/root/anaconda3/bin/pip3"
+export PYPI_INDEX_URL="http://devpi.corp.qunar.com/qunar/dev/+simple/"
+export PYPI_TRUSTED_HOST="devpi.corp.qunar.com"
+export GUNICORN_PATH="/root/anaconda3/bin/gunicorn"
+
+# 启动生产环境
+./deploy_scripts/startenv_prod.sh
+```
+
+**环境变量说明**：
+- `PYTHON_CMD`: Python 可执行文件路径（默认: `python3`）
+- `PIP_CMD`: pip 可执行文件路径（默认: `pip3`）
+- `PYPI_INDEX_URL`: 公司内部 PyPI 镜像源地址（可选）
+- `PYPI_TRUSTED_HOST`: 信任的主机地址（可选，配合镜像源使用）
+- `GUNICORN_PATH`: gunicorn 可执行文件路径（可选，生产环境优先使用 gunicorn）
+- `APP_PORT`: 应用端口（默认: `8080`，发布平台会通过此环境变量设置）
+- `AUTO_ENV_NAME`: 自动设置的环境标识（prod/beta），供发布平台使用
+- `RUN_CMD`: 自动设置的运行命令，供发布平台调用
+
+#### 方式二：直接运行
+
 ```bash
 python run.py
 ```
 
-服务将在 `http://0.0.0.0:8001` 启动（允许其他电脑访问）。
+服务将在 `http://0.0.0.0:8080` 启动（允许其他电脑访问）。
 
 **注意**: 
+- 默认端口为 8080（与发布平台保持一致），可通过 `APP_PORT` 环境变量修改
 - 后端配置为允许外部访问（`host="0.0.0.0"`），其他电脑可以通过网络访问此服务
-- 前端默认连接本地后端（`localhost:8001`），如需连接其他电脑的后端，请修改前端配置中的 API 地址
-- 本地访问地址: `http://localhost:8001` 或 `http://127.0.0.1:8001`
-- 局域网访问地址: `http://<你的局域网IP>:8001`
+- 前端默认连接本地后端（`localhost:8080`），如需连接其他电脑的后端，请修改前端配置中的 API 地址
+- 本地访问地址: `http://localhost:8080` 或 `http://127.0.0.1:8080`
+- 局域网访问地址: `http://<你的局域网IP>:8080`
+- 修改端口示例: `APP_PORT=8001 python run.py`（本地开发如需使用其他端口）
 
 ### 5. API 使用指南
 
-访问 Swagger UI 文档: `http://localhost:8001/docs` 或 `http://127.0.0.1:8001/docs`
+访问 Swagger UI 文档: `http://localhost:8080/docs` 或 `http://127.0.0.1:8080/docs`
 
 #### 文件管理接口
 
@@ -237,7 +285,7 @@ python run.py
     *   参数: `role_id`（角色ID，即 `roles.id`）
     *   响应: 返回角色详细信息，包括：
         - `id`: 角色ID（roles.id）
-        - `uuid`: 用户ID（roles.uuid，对应 loads.id）
+        - `load_id`: 用户ID（roles.load_id，对应 loads.id）
         - `name`: 角色名称
         - `description`: 角色描述
         - `system_prompt`: 系统提示词
@@ -247,6 +295,12 @@ python run.py
         - `enable_l1_retrieval`: 是否启用L1检索
         - `create_time`: 创建时间
         - `update_time`: 更新时间
+    
+*   **GET /api/roles/uuid/{uuid}**: 根据用户UUID获取角色信息
+    *   功能: 根据用户UUID（loads.id）获取角色详细信息
+    *   参数: `uuid`（用户UUID，即 `loads.id`，对应 `roles.load_id`）
+    *   响应: 返回角色详细信息（格式同 GET /api/roles/{role_id}）
+    *   说明: 用于根据用户ID查找对应的角色
     
 *   **PUT /api/roles/{role_id}**: 根据角色ID更新角色信息
     *   功能: 根据角色ID更新角色信息（支持部分更新）
@@ -265,9 +319,18 @@ python run.py
         ```
     *   响应: 返回更新结果，包含 `role_id` 字段
     *   说明:
-        - `role_id` 是 `roles.id`（独立的UUID），不是 `roles.uuid`
+        - `role_id` 是 `roles.id`（独立的UUID），不是 `roles.load_id`
         - 所有字段都是可选的，只更新提供的字段
         - 更新 `name` 时会自动创建 l1_versions 和 l1_bios 的初始记录（如果不存在）
+
+*   **PUT /api/roles/uuid/{uuid}**: 根据用户UUID更新角色信息
+    *   功能: 根据用户UUID（loads.id）更新角色信息（支持部分更新）
+    *   参数: `uuid`（用户UUID，即 `loads.id`，对应 `roles.load_id`）
+    *   请求体: JSON 格式，所有字段可选（格式同 PUT /api/roles/{role_id}）
+    *   响应: 返回更新结果，包含 `role_id` 字段
+    *   说明:
+        - 如果角色不存在，会根据 `name` 字段创建新角色
+        - 用于根据用户ID更新或创建对应的角色
 
 #### 状态传记接口
 
@@ -309,7 +372,7 @@ python run.py
 
 *   **PUT /api/l1-bios/{role_id}**: 创建或更新L1传记（upsert，按角色ID）
     *   功能: 根据角色ID创建或更新L1传记记录
-    *   参数: `role_id`（角色UUID，即 `roles.uuid`，对应 `loads.id`）
+    *   参数: `role_id`（角色ID，即 `roles.load_id`，对应 `loads.id`）
     *   请求体: JSON 格式
         ```json
         {

@@ -34,7 +34,7 @@ class Memory(Base):
     __tablename__ = "memories"
     
     id = Column(Integer, primary_key=True, autoincrement=True)  # 自增主键 (serial4)
-    role_id = Column(String(36), nullable=False, index=True)  # 关联到 roles.id (varchar(36)类型，NOT NULL)
+    role_id = Column(Integer, ForeignKey('roles.id', ondelete='SET NULL'), nullable=False, index=True)  # 关联到 roles.id（整数，NOT NULL）
     name = Column(String(255), nullable=False)
     size = Column(Integer, nullable=False)
     type = Column(String(50), nullable=False)
@@ -70,7 +70,7 @@ class Document(Base):
     insight = Column(Text, nullable=True)
     summary = Column(Text, nullable=True)
     keywords = Column(Text, nullable=True)
-    role_id = Column(String(36), nullable=True, index=True)  # 关联到 roles.id (varchar(36)类型)
+    role_id = Column(Integer, ForeignKey('roles.id', ondelete='SET NULL'), nullable=True, index=True)  # 关联到 roles.id（整数）
     
     __table_args__ = (
         CheckConstraint("extract_status IN ('INITIALIZED', 'SUCCESS', 'FAILED')", name='document_extract_status_check'),

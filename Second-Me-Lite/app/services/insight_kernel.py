@@ -81,12 +81,14 @@ class InsightKernel:
             # 1. 获取状态传记（从 status_biography 表）
             # 注意：status_biography.role_id 是 varchar(36)，需要转换为字符串进行比较
             status_bio = db.query(StatusBiography).filter(
-                StatusBiography.role_id == str(role_id)
+                StatusBiography.role_id == role_id
             ).first()
             
             # 2. 获取角色信息（从 role 表）
             from app.models.role import Role
-            role = db.query(Role).filter(Role.id == str(role_id)).first()  # role.id 是 String(36) 类型
+            # 确保 role_id 是整数类型
+            role_id_int = int(role_id) if not isinstance(role_id, int) else role_id
+            role = db.query(Role).filter(Role.id == role_id_int).first()  # role.id 是整数类型
             if not role:
                 logger.warning(f"未找到角色 {role_id}，返回空的 BioInfo")
                 return BioInfo()

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey
 from datetime import datetime
 from app.core.database import Base
 
@@ -7,8 +7,8 @@ class Role(Base):
     """角色表（roles）"""
     __tablename__ = "roles"
     
-    id = Column(String(36), primary_key=True)  # 角色独立ID（varchar(36)），自动生成的UUID
-    uuid = Column(String(64), nullable=False, unique=True)  # 用户ID（varchar(64)），关联到 loads.id，用于关联用户
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)  # 角色独立ID，自增整数
+    load_id = Column(Integer, ForeignKey('loads.id', ondelete='CASCADE'), nullable=False, unique=True)  # 用户ID，关联到 loads.id，用于关联用户
     name = Column(String(100), nullable=False)  # 角色名称，允许重复
     description = Column(String(500), nullable=True)
     system_prompt = Column(Text, nullable=False)
@@ -23,7 +23,7 @@ class Role(Base):
         """转换为字典格式"""
         return {
             'id': self.id,
-            'uuid': self.uuid,
+            'load_id': self.load_id,
             'name': self.name,
             'description': self.description,
             'system_prompt': self.system_prompt,

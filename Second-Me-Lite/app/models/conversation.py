@@ -1,15 +1,14 @@
-from sqlalchemy import Column, String, Text, Boolean, DateTime, ForeignKey, UniqueConstraint, CheckConstraint
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, UniqueConstraint, CheckConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.core.database import Base
-import uuid
 
 
 class Conversation(Base):
     """会话表（conversations）"""
     __tablename__ = "conversations"
     
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     conversation_type = Column(String(20), nullable=False)  # 'single' 单聊, 'group' 群聊
     title = Column(String(255), nullable=True)  # 群聊标题，单聊可空
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
@@ -34,9 +33,9 @@ class ConversationParticipant(Base):
     """会话参与者表（conversation_participants）"""
     __tablename__ = "conversation_participants"
     
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    conversation_id = Column(String(36), ForeignKey('conversations.id', ondelete='CASCADE'), nullable=False)
-    user_id = Column(String(36), nullable=False)  # 用户ID（loads.id）
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    conversation_id = Column(Integer, ForeignKey('conversations.id', ondelete='CASCADE'), nullable=False)
+    user_id = Column(Integer, nullable=False)  # 用户ID（loads.id）或角色ID（roles.id）
     joined_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     last_read_at = Column(DateTime(timezone=True), nullable=True)  # 用户最后阅读时间
     
@@ -62,9 +61,9 @@ class Message(Base):
     """消息表（messages）"""
     __tablename__ = "messages"
     
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    conversation_id = Column(String(36), ForeignKey('conversations.id', ondelete='CASCADE'), nullable=False)
-    sender_id = Column(String(36), nullable=False)  # 发送者ID（user_id 或 role_id）
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    conversation_id = Column(Integer, ForeignKey('conversations.id', ondelete='CASCADE'), nullable=False)
+    sender_id = Column(Integer, nullable=False)  # 发送者ID（loads.id 或 roles.id）
     content = Column(Text, nullable=False)  # 消息内容
     message_type = Column(String(20), default='text', nullable=False)  # 消息类型（text, image, file等）
     attachment_url = Column(String(255), nullable=True)  # 附件URL

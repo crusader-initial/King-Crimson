@@ -16,7 +16,7 @@ class L1BioService:
         
         Args:
             db: 数据库会话
-            role_id: 角色UUID（roles.uuid，String类型，对应loads.id）
+            role_id: 角色ID（roles.load_id，Integer类型，对应loads.id）
             content_third_view: 新的第三方视角内容
             
         Returns:
@@ -62,7 +62,7 @@ class L1BioService:
         
         Args:
             db: 数据库会话
-            role_id: 角色UUID（roles.uuid，String类型，对应loads.id）
+            role_id: 角色ID（roles.load_id，Integer类型，对应loads.id）
             content_third_view: 新的第三方视角内容
             
         Returns:
@@ -216,8 +216,8 @@ class L1BioService:
         
         Args:
             db: 数据库会话
-            role_id: 角色UUID（roles.uuid，String类型，varchar(64)，对应loads.id）
-                    注意：l1_bios.role_id 和 l1_versions.role_id 使用 roles.uuid，不是 roles.id
+            role_id: 角色ID（roles.load_id，Integer类型，对应loads.id）
+                    注意：l1_bios.role_id 和 l1_versions.role_id 使用 roles.load_id，不是 roles.id
             
         Returns:
             Tuple[是否成功, 错误信息]

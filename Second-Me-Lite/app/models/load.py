@@ -1,14 +1,13 @@
-from sqlalchemy import Column, String, Text, DateTime, CheckConstraint
+from sqlalchemy import Column, Integer, String, Text, DateTime, CheckConstraint
 from datetime import datetime
 from app.core.database import Base
-import uuid
 
 
 class Load(Base):
     """用户表（loads）"""
     __tablename__ = "loads"
     
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     email = Column(String(255), nullable=False, default='')

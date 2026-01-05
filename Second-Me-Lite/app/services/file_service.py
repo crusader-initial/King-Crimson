@@ -422,14 +422,14 @@ class FileService:
             
             # 3. 获取该用户对应的角色（用于文档上传）
             role_id = None
-            role = db.query(Role).filter(Role.uuid == load_id).first()
+            role = db.query(Role).filter(Role.load_id == load_id_int).first()
             if role:
                 role_id = role.id
             
             # 4. 查询用户参与的所有单聊会话
             # 获取用户参与的所有会话
             participant_records = db.query(ConversationParticipant).filter(
-                ConversationParticipant.user_id == load_id
+                ConversationParticipant.user_id == load_id_int
             ).all()
             
             if not participant_records:
@@ -454,7 +454,7 @@ class FileService:
                     # 5.1 获取该会话的另一个参与者
                     other_participants = db.query(ConversationParticipant).filter(
                         ConversationParticipant.conversation_id == conversation.id,
-                        ConversationParticipant.user_id != load_id
+                        ConversationParticipant.user_id != load_id_int
                     ).all()
                     
                     if not other_participants:
@@ -469,12 +469,22 @@ class FileService:
                     other_participant_name = None
                     
                     # 先尝试作为用户查询
-                    other_load = db.query(Load).filter(Load.id == other_participant_id_str).first()
+                    # 确保 other_participant_id 是整数
+                    try:
+                        other_participant_id_int = int(other_participant_id_str) if isinstance(other_participant_id_str, str) else other_participant_id_str
+                        other_load = db.query(Load).filter(Load.id == other_participant_id_int).first()
+                    except (ValueError, TypeError):
+                        other_load = None
                     if other_load:
                         other_participant_name = other_load.name
                     else:
                         # 如果不是用户，尝试作为角色查询
-                        other_role = db.query(Role).filter(Role.id == other_participant_id_str).first()
+                        # 确保 other_participant_id 是整数
+                        try:
+                            other_participant_id_int = int(other_participant_id_str) if isinstance(other_participant_id_str, str) else other_participant_id_str
+                            other_role = db.query(Role).filter(Role.id == other_participant_id_int).first()
+                        except (ValueError, TypeError):
+                            other_role = None
                         if other_role:
                             other_participant_name = other_role.name
                     
@@ -501,12 +511,11 @@ class FileService:
                     
                     # 构建消息列表（类似chat接口的messages格式，但用用户名称替换role）
                     messages_list = []
-                    # 确保 load_id 是字符串类型
-                    load_id_str = str(load_id)
+                    # 确保 load_id 是整数类型
+                    load_id_int = int(load_id) if not isinstance(load_id, int) else load_id
                     for msg in recent_messages:
                         # 判断发送者是当前用户还是另一个参与者
-                        msg_sender_id_str = str(msg.sender_id)
-                        if msg_sender_id_str == load_id_str:
+                        if msg.sender_id == load_id_int:
                             sender_name = user_name
                         else:
                             sender_name = other_participant_name

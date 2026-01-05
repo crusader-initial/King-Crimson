@@ -179,7 +179,7 @@ def get_role_by_uuid(
     根据用户UUID（loads.id）获取角色信息
     
     Args:
-        uuid: 用户UUID（loads.id，对应 roles.uuid）
+        uuid: 用户UUID（loads.id，对应 roles.load_id）
     """
     try:
         role, error, status_code = RoleService.get_role_by_uuid(
@@ -237,7 +237,7 @@ def update_role_by_uuid(
     如果角色不存在，则创建新角色（用于输入昵称时创建role记录）
     
     Args:
-        uuid: 用户UUID（loads.id，对应 roles.uuid）
+        uuid: 用户UUID（loads.id，对应 roles.load_id）
     
     请求体示例:
     {
@@ -604,9 +604,9 @@ def info_collection_llm(
         if not load_id:
             return APIResponse.error(code=400, message="缺少用户ID（load_id参数）")
         
-        # 获取角色信息（通过 Role.uuid = loads.id）
+        # 获取角色信息（通过 Role.load_id = loads.id）
         from app.models.role import Role
-        role = db.query(Role).filter(Role.uuid == load_id).first()
+        role = db.query(Role).filter(Role.load_id == load_id).first()
         
         if not role:
             logger.warning(f"未找到对应的角色（load_id: {load_id}），继续执行LLM调用但不记录消息")
@@ -633,8 +633,8 @@ def info_collection_llm(
             from app.services.message_service import MessageService
             user_message, msg_error, msg_status = MessageService.create_message(
                 db=db,
-                conversation_id=str(conversation.id),  # 转换为字符串
-                sender_id=str(load_id),  # 用户ID，确保是字符串
+                conversation_id=conversation.id,  # 整数类型
+                sender_id=int(load_id) if not isinstance(load_id, int) else load_id,  # 用户ID，整数类型
                 content=request.query,
                 message_type='text',
                 sender_type='user'
@@ -658,18 +658,17 @@ def info_collection_llm(
             
             if not msg_error and messages_list:
                 # 转换为 OpenAI 格式
-                # 确保所有ID都转换为字符串进行比较，避免类型不匹配问题
-                load_id_str = str(load_id)
-                role_id_str = str(role.id)
+                # 确保所有ID都是整数类型进行比较
+                load_id_int = int(load_id) if not isinstance(load_id, int) else load_id
+                role_id_int = role.id
                 
                 for msg in messages_list:
-                    sender_id_str = str(msg.sender_id)
-                    if sender_id_str == load_id_str:  # 用户消息
+                    if msg.sender_id == load_id_int:  # 用户消息
                         history_messages.append({
                             "role": "user",
                             "content": msg.content
                         })
-                    elif sender_id_str == role_id_str:  # AI消息
+                    elif msg.sender_id == role_id_int:  # AI消息
                         history_messages.append({
                             "role": "assistant",
                             "content": msg.content
@@ -733,8 +732,8 @@ def info_collection_llm(
             from app.services.message_service import MessageService
             ai_message, msg_error, msg_status = MessageService.create_message(
                 db=db,
-                conversation_id=str(conversation.id),  # 转换为字符串
-                sender_id=str(role.id),  # 角色ID（AI回复），转换为字符串
+                conversation_id=conversation.id,  # 整数类型
+                sender_id=role.id,  # 角色ID（AI回复），整数类型
                 content=answer,
                 message_type='text',
                 sender_type='ai'

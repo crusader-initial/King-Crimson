@@ -246,7 +246,7 @@ def export_messages_to_document(
         
         # 如果还没有 role_id，尝试从 load_id 查询
         if not role_id:
-            role = db.query(Role).filter(Role.uuid == request.load_id).first()
+            role = db.query(Role).filter(Role.load_id == request.load_id).first()
             if role:
                 role_id = role.id
                 logger.info(f"从 load_id 查询到 role_id: {role_id}")
