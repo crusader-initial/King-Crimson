@@ -164,7 +164,7 @@ def process_document_embeddings(
             message=f"处理文档 {document_id} 的 embeddings 时出错: {str(e)}"
         )
 
-c
+
 def process_document_embedding(
     document_id: int,
     db: Session = Depends(get_db)
