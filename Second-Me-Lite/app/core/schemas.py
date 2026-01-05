@@ -51,6 +51,7 @@ class InfoCollectionLLMRequest(BaseModel):
     """信息采集LLM请求模型（用于信息采集过程中的LLM调用）"""
     query: str  # 用户查询或上下文
     load_id: str  # 用户ID（loads.id）
+    conversation_id: str  # 会话ID（必传，用于查询会话消息记录列表）
 
 class InfoCollectionRequest(BaseModel):
     """信息采集提交请求模型"""
@@ -108,19 +109,18 @@ class GenerateL1Request(BaseModel):
 
 class CreateConversationRequest(BaseModel):
     """创建会话请求模型"""
-    user_id: str  # 用户ID（loads.id）
-    participant_id: str  # 参与者ID（roles.id 或其他用户ID）
-    participant_type: str  # 参与者类型（必传，如 'role'）
+    participant_ids: List[str]  # 参与者ID列表（loads.id 或 roles.id 的列表）
+    conversation_type: str = 'single'  # 会话类型（'single' 单聊, 'group' 群聊，默认 'single'）
     title: Optional[str] = None  # 会话标题（可选）
 
 class CreateMessageRequest(BaseModel):
     """创建消息请求模型"""
     conversation_id: str  # 会话ID
     sender_id: str  # 发送者ID（user_id 或 role_id）
-    receiver_id: str  # 接收者ID（user_id 或 role_id）
     content: str  # 消息内容
     message_type: str = 'text'  # 消息类型（默认 'text'）
     attachment_url: Optional[str] = None  # 附件URL（可选）
+    sender_type: str = 'user'  # 发送者类型（'user' 真实用户, 'ai' AI用户，默认 'user'）
 
 class AdvancedChatRequest(BaseModel):
     """高级聊天请求模型 - 多阶段迭代优化"""
@@ -151,8 +151,7 @@ class AdvancedChatResponse(BaseModel):
 
 class ExportMessagesToDocumentRequest(BaseModel):
     """将消息导出为文档的请求模型"""
-    load_id: Optional[str] = Field(default=None, description="用户ID（loads.id），与 role_id 二选一")
-    role_id: Optional[str] = Field(default=None, description="角色ID（roles.id），与 load_id 二选一")
+    load_id: str = Field(..., description="用户ID（loads.id），必填")
     title: Optional[str] = Field(default=None, description="文档标题（可选，默认自动生成）")
     description: Optional[str] = Field(default=None, description="文档描述（可选）")
 

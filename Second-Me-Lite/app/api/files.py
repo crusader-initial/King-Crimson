@@ -5,15 +5,12 @@ from typing import Optional
 from app.core.database import get_db
 from app.services.file_service import FileService
 from app.services.document_service import DocumentService
-from app.services.chunk_service import DocumentChunker, ChunkService
-from app.core.config import Config
 from app.core.response import APIResponse
 from app.core.schemas import ExportMessagesToDocumentRequest
-from app.models.conversation import Conversation, Message
+from app.core.utils import serialize_value
+from app.services.L1.l1_manager import generate_l1_from_l0, store_l1_data, generate_and_store_status_bio
+from app.models.document import Document
 from app.models.role import Role
-from app.models.load import Load
-from io import BytesIO
-from datetime import datetime
 import json
 import logging
 from urllib.parse import unquote
@@ -90,46 +87,34 @@ def process_all_chunks(
 ):
     """批量处理所有文档的 chunks"""
     try:
-        config = Config.from_env()
-        chunker = DocumentChunker(
-            chunk_size=int(config.get("DOCUMENT_CHUNK_SIZE", 500)),
-            overlap=int(config.get("DOCUMENT_CHUNK_OVERLAP", 50)),
-        )
-
         documents = document_service.list_documents(db)
         processed, failed = 0, 0
+        failed_docs = []
 
-        chunk_service = ChunkService()
         for doc in documents:
             try:
-                if not doc.raw_content:
-                    logger.warning(f"文档 {doc.id} 没有内容，跳过...")
-                    failed += 1
-                    continue
-
-                # 分割成 chunks 并保存
-                chunks = chunker.split(doc.raw_content)
-                for chunk in chunks:
-                    chunk.document_id = doc.id
-                    chunk_service.save_chunk(chunk)
-
+                # 使用服务层方法处理单个文档的分块
+                chunks_count = document_service.process_document_chunks(db, doc.id)
                 processed += 1
                 logger.info(
-                    f"文档 {doc.id} 处理完成: 创建了 {len(chunks)} 个 chunks"
+                    f"文档 {doc.id} 处理完成: 创建了 {chunks_count} 个 chunks"
                 )
-
+            except ValueError as e:
+                # 文档不存在或没有内容的情况
+                logger.warning(f"文档 {doc.id} 跳过: {str(e)}")
+                failed += 1
+                failed_docs.append({"id": doc.id, "name": doc.name, "error": str(e)})
             except Exception as e:
                 logger.error(f"处理文档 {doc.id} 失败: {str(e)}")
                 failed += 1
-
-        # 提交所有更改
-        db.commit()
+                failed_docs.append({"id": doc.id, "name": doc.name, "error": str(e)})
 
         return APIResponse.success(
             data={
                 "total": len(documents),
                 "processed": processed,
                 "failed": failed,
+                "failed_documents": failed_docs,
             },
             message=f"Chunk 处理完成: {processed} 个成功，{failed} 个失败"
         )
@@ -179,7 +164,7 @@ def process_document_embeddings(
             message=f"处理文档 {document_id} 的 embeddings 时出错: {str(e)}"
         )
 
-@router.post("/documents/{document_id}/embedding")
+c
 def process_document_embedding(
     document_id: int,
     db: Session = Depends(get_db)
@@ -211,196 +196,206 @@ def export_messages_to_document(
     db: Session = Depends(get_db)
 ):
     """
-    将消息导出为文档并上传
+    将消息导出为文档并执行完整的处理流程
     
-    根据 load_id 或 role_id 获取所有相关的消息，组合成文档后走上传逻辑
+    根据 load_id 获取用户参与的所有单聊会话，为每个会话创建单独的文档，然后依次执行：
+    1. 将聊天记录消息转换为文档并落表
+    2. 文件内容分析
+    3. 文档内容分块
+    4. 文档分块向量化
+    5. 文档向量化
+    6. 身份传记数据生成
+    7. L1层数据生成
     
     请求体示例:
     {
-        "load_id": "user-uuid",  // 或
-        "role_id": "role-uuid",  // 与 load_id 二选一
-        "title": "聊天记录导出",  // 可选
+        "load_id": "user-uuid",  // 必填
+        "title": "聊天记录导出",  // 可选（用于文档标题前缀）
         "description": "从消息导出的文档"  // 可选
     }
     """
     try:
-        # 1. 验证参数
-        if not request.load_id and not request.role_id:
-            return APIResponse.error(code=400, message="load_id 或 role_id 必须提供其中一个")
+        # 第一步：将聊天记录消息转换为文档并落表
+        logger.info(f"步骤1: 开始导出消息为文档 (load_id={request.load_id})")
+        result = file_service.export_messages_to_document(
+            db=db,
+            load_id=request.load_id,
+            title=request.title,
+            description=request.description
+        )
         
-        if request.load_id and request.role_id:
-            return APIResponse.error(code=400, message="load_id 和 role_id 只能提供其中一个")
+        if not result.get("data") or not result.get("data", {}).get("documents"):
+            return APIResponse.success(
+                data=result.get("data", {}),
+                message=result.get("message", "导出成功，但没有创建文档")
+            )
         
-        # 2. 确定 role_id（用于文档上传）
+        documents = result.get("data", {}).get("documents", [])
+        logger.info(f"步骤1完成: 成功创建 {len(documents)} 个文档")
+        
+        # 获取 role_id（从第一个文档关联的角色获取，或从 load_id 查询）
         role_id = None
-        conversations = []
+        if documents:
+            # 从第一个文档获取 role_id
+            first_doc_id = documents[0].get("document_id")
+            if first_doc_id:
+                first_doc = db.query(Document).filter(Document.id == first_doc_id).first()
+                if first_doc and first_doc.role_id:
+                    role_id = first_doc.role_id
+                    logger.info(f"从文档获取到 role_id: {role_id}")
         
-        if request.load_id:
-            # 根据 load_id 获取所有会话
-            load = db.query(Load).filter(Load.id == request.load_id).first()
-            if not load:
-                return APIResponse.error(code=404, message=f"未找到用户 ID: {request.load_id}")
-            
-            # 获取该用户的所有会话
-            conversations = db.query(Conversation).filter(
-                Conversation.user_id == request.load_id
-            ).all()
-            
-            # 尝试获取该用户对应的角色（通过 Role.uuid = loads.id）
+        # 如果还没有 role_id，尝试从 load_id 查询
+        if not role_id:
             role = db.query(Role).filter(Role.uuid == request.load_id).first()
             if role:
                 role_id = role.id
-            else:
-                # 如果没有找到角色，尝试从会话中获取第一个角色的 role_id
-                if conversations:
-                    # 从会话中获取 participant_id（通常是 role_id）
-                    role_id = conversations[0].participant_id
+                logger.info(f"从 load_id 查询到 role_id: {role_id}")
+        
+        # 对每个文档执行步骤2-5
+        processed_docs = []
+        failed_docs = []
+        
+        for doc_info in documents:
+            document_id = doc_info.get("document_id")
+            if not document_id:
+                logger.warning(f"文档信息缺少 document_id: {doc_info}")
+                failed_docs.append({"document_id": None, "error": "缺少 document_id"})
+                continue
+            
+            try:
+                logger.info(f"开始处理文档 {document_id}")
+                
+                # 获取文档对象
+                document = db.query(Document).filter(Document.id == document_id).first()
+                if not document:
+                    logger.error(f"文档 {document_id} 不存在")
+                    failed_docs.append({"document_id": document_id, "error": "文档不存在"})
+                    continue
+                
+                # 第二步：文件内容分析
+                logger.info(f"步骤2: 开始分析文档 {document_id}")
+                try:
+                    document_service.analyze_document(db, document)
+                    logger.info(f"步骤2完成: 文档 {document_id} 分析成功")
+                except Exception as e:
+                    logger.error(f"步骤2失败: 文档 {document_id} 分析失败: {str(e)}")
+                    failed_docs.append({"document_id": document_id, "step": 2, "error": str(e)})
+                    continue
+                
+                # 第三步：文档内容分块
+                logger.info(f"步骤3: 开始分块文档 {document_id}")
+                try:
+                    chunks_count = document_service.process_document_chunks(db, document_id)
+                    logger.info(f"步骤3完成: 文档 {document_id} 分块成功，创建了 {chunks_count} 个 chunks")
+                except Exception as e:
+                    logger.error(f"步骤3失败: 文档 {document_id} 分块失败: {str(e)}")
+                    failed_docs.append({"document_id": document_id, "step": 3, "error": str(e)})
+                    continue
+                
+                # 第四步：文档分块向量化
+                logger.info(f"步骤4: 开始为文档 {document_id} 的 chunks 生成向量")
+                try:
+                    processed_chunks = document_service.generate_document_chunk_embeddings(document_id)
+                    if processed_chunks:
+                        logger.info(f"步骤4完成: 文档 {document_id} 的 {len(processed_chunks)} 个 chunks 向量化成功")
+                    else:
+                        logger.warning(f"步骤4: 文档 {document_id} 没有找到 chunks")
+                except Exception as e:
+                    logger.error(f"步骤4失败: 文档 {document_id} 的 chunks 向量化失败: {str(e)}")
+                    failed_docs.append({"document_id": document_id, "step": 4, "error": str(e)})
+                    continue
+                
+                # 第五步：文档向量化
+                logger.info(f"步骤5: 开始为文档 {document_id} 生成文档级向量")
+                try:
+                    embedding = document_service.process_document_embedding(document_id)
+                    if embedding:
+                        logger.info(f"步骤5完成: 文档 {document_id} 向量化成功，向量维度: {len(embedding)}")
+                    else:
+                        logger.warning(f"步骤5: 文档 {document_id} 向量化返回 None")
+                except Exception as e:
+                    logger.error(f"步骤5失败: 文档 {document_id} 向量化失败: {str(e)}")
+                    failed_docs.append({"document_id": document_id, "step": 5, "error": str(e)})
+                    continue
+                
+                processed_docs.append({
+                    "document_id": document_id,
+                    "filename": doc_info.get("filename"),
+                    "participant_name": doc_info.get("participant_name")
+                })
+                logger.info(f"文档 {document_id} 处理完成")
+                
+            except Exception as e:
+                logger.error(f"处理文档 {document_id} 时发生错误: {str(e)}", exc_info=True)
+                failed_docs.append({"document_id": document_id, "error": str(e)})
+                continue
+        
+        # 第六步：身份传记数据生成（只需要执行一次，使用 role_id）
+        status_bio_result = None
+        if role_id:
+            logger.info(f"步骤6: 开始生成身份传记数据 (role_id={role_id})")
+            try:
+                status_bio = generate_and_store_status_bio(role_id=role_id)
+                if status_bio:
+                    status_bio_result = {
+                        "content": status_bio.content_second_view,
+                        "content_third_view": status_bio.content_third_view,
+                        "summary": status_bio.summary_second_view,
+                        "summary_third_view": status_bio.summary_third_view,
+                    }
+                    logger.info(f"步骤6完成: 身份传记数据生成成功")
                 else:
-                    return APIResponse.error(code=404, message=f"用户 {request.load_id} 没有找到相关的会话或角色")
+                    logger.warning(f"步骤6: 身份传记数据生成返回 None")
+            except Exception as e:
+                logger.error(f"步骤6失败: 身份传记数据生成失败: {str(e)}", exc_info=True)
+        else:
+            logger.warning("步骤6跳过: 未找到 role_id")
         
-        elif request.role_id:
-            # 根据 role_id 获取所有会话
-            role = db.query(Role).filter(Role.id == request.role_id).first()
-            if not role:
-                return APIResponse.error(code=404, message=f"未找到角色 ID: {request.role_id}")
-            
-            role_id = request.role_id
-            
-            # 获取该角色相关的所有会话（作为 participant_id）
-            conversations = db.query(Conversation).filter(
-                Conversation.participant_id == request.role_id,
-                Conversation.participant_type == 'role'
-            ).all()
+        # 第七步：L1层数据生成（只需要执行一次，使用 role_id）
+        l1_result = None
+        if role_id:
+            logger.info(f"步骤7: 开始生成L1层数据 (role_id={role_id})")
+            try:
+                l1_generation_result = generate_l1_from_l0(role_id=role_id)
+                if l1_generation_result:
+                    version_number = store_l1_data(db, l1_generation_result, role_id=role_id)
+                    l1_result = {
+                        "version": version_number,
+                        "data": serialize_value(l1_generation_result.to_dict())
+                    }
+                    logger.info(f"步骤7完成: L1层数据生成成功，版本: {version_number}")
+                else:
+                    logger.warning(f"步骤7: L1层数据生成返回 None")
+            except Exception as e:
+                logger.error(f"步骤7失败: L1层数据生成失败: {str(e)}", exc_info=True)
+        else:
+            logger.warning("步骤7跳过: 未找到 role_id")
         
-        if not conversations:
-            return APIResponse.error(code=404, message="未找到相关的会话")
-        
-        # 3. 获取所有会话的消息
-        conversation_ids = [conv.id for conv in conversations]
-        
-        messages = db.query(Message).filter(
-            Message.conversation_id.in_(conversation_ids)
-        ).order_by(Message.created_at.asc()).all()
-        
-        if not messages:
-            return APIResponse.error(code=404, message="未找到相关的消息")
-        
-        # 4. 格式化消息为文档内容
-        document_content = format_messages_to_document(messages, conversations, db)
-        
-        # 5. 生成文件名
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = request.title if request.title else f"聊天记录_{timestamp}.txt"
-        # 确保文件名以 .txt 结尾
-        if not filename.endswith('.txt'):
-            filename = f"{filename}.txt"
-        
-        # 6. 创建临时文件对象
-        file_content = document_content.encode('utf-8')
-        file_obj = BytesIO(file_content)
-        file_obj.name = filename
-        
-        # 创建 UploadFile 对象
-        upload_file = UploadFile(
-            file=file_obj,
-            filename=filename
-        )
-        
-        # 7. 准备元数据
-        metadata = {
-            'title': request.title if request.title else f"聊天记录导出_{timestamp}",
-            'description': request.description if request.description else "从消息导出的文档"
+        # 构建返回结果
+        response_data = {
+            "created_count": len(documents),
+            "processed_documents": processed_docs,
+            "failed_documents": failed_docs,
+            "status_bio": status_bio_result,
+            "l1_data": l1_result,
+            "role_id": role_id
         }
         
-        # 8. 调用现有的文档上传逻辑
-        result = file_service.upload_file(db, upload_file, metadata, role_id)
+        message = f"导出完成: 创建 {len(documents)} 个文档，成功处理 {len(processed_docs)} 个，失败 {len(failed_docs)} 个"
+        if status_bio_result:
+            message += "，身份传记生成成功"
+        if l1_result:
+            message += f"，L1数据生成成功（版本: {l1_result.get('version')}）"
         
         return APIResponse.success(
-            data=result.get("data", {}),
-            message=result.get("message", "消息导出为文档成功")
+            data=response_data,
+            message=message
         )
         
     except Exception as e:
         logger.error(f"导出消息为文档失败: {str(e)}", exc_info=True)
+        # 如果是 HTTPException，提取状态码和详情
+        if hasattr(e, 'status_code') and hasattr(e, 'detail'):
+            return APIResponse.error(code=e.status_code, message=str(e.detail))
         return APIResponse.error(code=500, message=f"导出消息为文档失败: {str(e)}")
-
-
-def format_messages_to_document(messages: list, conversations: list, db: Session) -> str:
-    """
-    将消息列表格式化为文档内容
-    
-    Args:
-        messages: 消息列表
-        conversations: 会话列表
-        db: 数据库会话
-        
-    Returns:
-        格式化后的文档内容（字符串）
-    """
-    # 创建会话ID到会话标题的映射
-    conv_dict = {conv.id: conv.title or f"会话_{conv.id[:8]}" for conv in conversations}
-    
-    # 创建角色ID到角色名的映射
-    role_dict = {}
-    load_dict = {}
-    
-    # 获取所有相关的角色和用户信息
-    role_ids = set()
-    load_ids = set()
-    
-    for msg in messages:
-        role_ids.add(msg.sender_id)
-        role_ids.add(msg.receiver_id)
-        load_ids.add(msg.sender_id)
-        load_ids.add(msg.receiver_id)
-    
-    # 查询角色信息
-    roles = db.query(Role).filter(Role.id.in_(role_ids)).all()
-    for role in roles:
-        role_dict[role.id] = role.name
-    
-    # 查询用户信息
-    loads = db.query(Load).filter(Load.id.in_(load_ids)).all()
-    for load in loads:
-        load_dict[load.id] = load.name
-    
-    # 按会话分组消息
-    messages_by_conv = {}
-    for msg in messages:
-        if msg.conversation_id not in messages_by_conv:
-            messages_by_conv[msg.conversation_id] = []
-        messages_by_conv[msg.conversation_id].append(msg)
-    
-    # 构建文档内容
-    lines = []
-    lines.append("=" * 80)
-    lines.append("聊天记录导出")
-    lines.append("=" * 80)
-    lines.append(f"导出时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    lines.append(f"会话数量: {len(conversations)}")
-    lines.append(f"消息总数: {len(messages)}")
-    lines.append("")
-    
-    # 按会话输出消息
-    for conv_id, conv_messages in messages_by_conv.items():
-        conv_title = conv_dict.get(conv_id, f"会话_{conv_id[:8]}")
-        lines.append("")
-        lines.append("-" * 80)
-        lines.append(f"会话: {conv_title}")
-        lines.append("-" * 80)
-        lines.append("")
-        
-        for msg in conv_messages:
-            # 确定发送者名称
-            sender_name = role_dict.get(msg.sender_id) or load_dict.get(msg.sender_id) or "未知用户"
-            
-            # 格式化时间
-            time_str = msg.created_at.strftime('%Y-%m-%d %H:%M:%S') if msg.created_at else "未知时间"
-            
-            # 输出消息
-            lines.append(f"[{time_str}] {sender_name}:")
-            lines.append(msg.content)
-            lines.append("")
-    
-    return "\n".join(lines)
 

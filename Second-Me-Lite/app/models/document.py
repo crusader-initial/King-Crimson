@@ -95,12 +95,3 @@ class Chunk(Base):
     
     document = relationship("Document", back_populates="chunks")
 
-
-class ChatHistory(Base):
-    """聊天历史表"""
-    __tablename__ = "chat_history"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    role = Column(String(50), nullable=False)  # user / assistant
-    content = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)

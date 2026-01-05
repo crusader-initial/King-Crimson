@@ -66,22 +66,23 @@ export default function InfoCollectionScreen() {
         if (roleResponse && roleResponse.data && roleResponse.data.id) {
           const roleId = roleResponse.data.id;
           
-          // 1. 创建会话
-          const conversationResponse = await createConversation(userId, roleId, 'role', '信息采集对话');
+          // 1. 创建会话（传入参与者ID列表和会话类型）
+          const conversationResponse = await createConversation([userId, roleId], 'single', '信息采集对话');
           if (conversationResponse && conversationResponse.data && conversationResponse.data.conversation_id) {
             const convId = conversationResponse.data.conversation_id;
             setConversationId(convId);
             setRoleId(roleId);
             console.log('会话记录创建成功');
             
-            // 2. 保存初始AI消息
+            // 2. 保存初始AI消息（信息采集阶段：sender_id为role.id，sender_type为'ai'）
             try {
               await createMessage(
                 convId,
-                roleId,  // 发送者：角色ID（AI）
-                userId,  // 接收者：用户ID
+                roleId,  // 发送者：角色ID（roles.id），信息采集阶段的AI消息由role发送
                 questionTemplates[1].text,  // 初始消息内容
-                'text'
+                'text',
+                null,
+                'ai'  // 发送者类型：AI（表结构约束：只能是'user'或'ai'）
               );
               console.log('初始消息保存成功');
             } catch (msgError) {
@@ -136,20 +137,53 @@ export default function InfoCollectionScreen() {
 
     try {
       // 先保存用户的真实回答到数据库
-      if (conversationId && roleId) {
+      // 如果conversationId或roleId不存在，尝试重新获取
+      let currentConvId = conversationId;
+      let currentRoleId = roleId;
+      
+      if (!currentConvId || !currentRoleId) {
+        console.warn('会话ID或角色ID不存在，尝试重新获取...');
+        try {
+          // 重新获取角色信息
+          const roleResponse = await getRoleByUuid(userId);
+          if (roleResponse && roleResponse.data && roleResponse.data.id) {
+            currentRoleId = roleResponse.data.id;
+            setRoleId(currentRoleId);
+            
+            // 重新创建会话
+            const conversationResponse = await createConversation([userId, currentRoleId], 'single', '信息采集对话');
+            if (conversationResponse && conversationResponse.data && conversationResponse.data.conversation_id) {
+              currentConvId = conversationResponse.data.conversation_id;
+              setConversationId(currentConvId);
+              console.log('重新创建会话成功:', currentConvId);
+            }
+          }
+        } catch (error) {
+          console.error('重新获取会话信息失败:', error);
+        }
+      }
+      
+      // 如果现在有conversationId和roleId，保存消息
+      if (currentConvId && currentRoleId) {
         try {
           await createMessage(
-            conversationId,
+            currentConvId,
             userId,  // 发送者：用户ID
-            roleId,  // 接收者：角色ID
             userAnswer,  // 用户的真实回答
-            'text'
+            'text',
+            null,
+            'user'  // 发送者类型：用户
           );
           console.log('用户回答保存成功');
         } catch (msgError) {
           console.error('保存用户回答失败:', msgError);
           // 不阻止流程，静默失败
         }
+      } else {
+        console.error('无法保存用户回答：缺少conversationId或roleId', { 
+          conversationId: currentConvId, 
+          roleId: currentRoleId 
+        });
       }
 
       // 根据当前问题序号，暂存数据到前端状态
@@ -176,7 +210,12 @@ export default function InfoCollectionScreen() {
       if (!isLastQuestion) {
         const nextQuestion = currentQuestion + 1;
         // 后端系统prompt已包含格式要求，前端只需发送简单指令
-        const response = await sendInfoCollectionLLM(`请根据之前的对话内容，生成第${nextQuestion}个问题。`, userId);
+        // conversationId 必传，用于查询会话消息记录列表
+        if (!currentConvId) {
+          console.error('conversationId 不存在，无法调用LLM');
+          throw new Error('conversationId is required');
+        }
+        const response = await sendInfoCollectionLLM(`请根据之前的对话内容，生成第${nextQuestion}个问题。`, userId, currentConvId);
         
         const nextQuestionText = response.data?.answer || response.answer || getFallbackQuestion(nextQuestion, updatedAnswers);
         const nextQuestionMessage = {
@@ -196,7 +235,12 @@ export default function InfoCollectionScreen() {
       } else {
         // 最后一个问题，生成总结
         // 后端系统prompt已包含格式要求，前端只需发送简单指令
-        const response = await sendInfoCollectionLLM('请根据之前的对话内容，生成总结性的回复。', userId);
+        // conversationId 必传，用于查询会话消息记录列表
+        if (!currentConvId) {
+          console.error('conversationId 不存在，无法调用LLM');
+          throw new Error('conversationId is required');
+        }
+        const response = await sendInfoCollectionLLM('请根据之前的对话内容，生成总结性的回复。', userId, currentConvId);
         
         const summaryText = response.data?.answer || response.answer || getFallbackSummary(updatedAnswers);
         const summaryMessage = {

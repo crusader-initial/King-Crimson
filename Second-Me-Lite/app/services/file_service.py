@@ -2,13 +2,18 @@ from pathlib import Path
 import os
 import logging
 import json
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, List
 from sqlalchemy.orm import Session
 from fastapi import UploadFile, HTTPException
 from app.models.document import Document, Memory, Chunk
+from app.models.conversation import Conversation, Message, ConversationParticipant
+from app.models.role import Role
+from app.models.load import Load
 from app.core.vector import get_embedding, store_embedding
 from app.core.config import settings
 from app.services.processors import ProcessorFactory, UnsupportedFileType
+from io import BytesIO
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -378,4 +383,195 @@ class FileService:
         except Exception as e:
             logger.error(f"保存文件到磁盘失败: {str(e)}", exc_info=True)
             raise
+    
+    def export_messages_to_document(
+        self,
+        db: Session,
+        load_id: str,
+        title: Optional[str] = None,
+        description: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        将消息导出为文档并上传
+        
+        根据 load_id 获取用户参与的所有单聊会话，为每个会话创建单独的文档
+        
+        Args:
+            db: 数据库会话
+            load_id: 用户ID（loads.id）
+            title: 文档标题前缀（可选）
+            description: 文档描述（可选）
+            
+        Returns:
+            包含创建结果的字典
+            
+        Raises:
+            HTTPException: 各种错误情况
+        """
+        try:
+            # 1. 验证参数
+            if not load_id:
+                raise HTTPException(status_code=400, detail="load_id 必须提供")
+            
+            # 2. 根据 load_id 获取用户信息
+            load = db.query(Load).filter(Load.id == load_id).first()
+            if not load:
+                raise HTTPException(status_code=404, detail=f"未找到用户 ID: {load_id}")
+            
+            user_name = load.name
+            
+            # 3. 获取该用户对应的角色（用于文档上传）
+            role_id = None
+            role = db.query(Role).filter(Role.uuid == load_id).first()
+            if role:
+                role_id = role.id
+            
+            # 4. 查询用户参与的所有单聊会话
+            # 获取用户参与的所有会话
+            participant_records = db.query(ConversationParticipant).filter(
+                ConversationParticipant.user_id == load_id
+            ).all()
+            
+            if not participant_records:
+                raise HTTPException(status_code=404, detail="未找到相关的会话")
+            
+            conversation_ids = [p.conversation_id for p in participant_records]
+            
+            # 查询这些会话，只保留单聊会话
+            conversations = db.query(Conversation).filter(
+                Conversation.id.in_(conversation_ids),
+                Conversation.conversation_type == 'single'
+            ).all()
+            
+            if not conversations:
+                raise HTTPException(status_code=404, detail="未找到相关的单聊会话")
+            
+            # 5. 遍历每个单聊会话，为每个会话创建文档
+            created_documents = []
+            
+            for conversation in conversations:
+                try:
+                    # 5.1 获取该会话的另一个参与者
+                    other_participants = db.query(ConversationParticipant).filter(
+                        ConversationParticipant.conversation_id == conversation.id,
+                        ConversationParticipant.user_id != load_id
+                    ).all()
+                    
+                    if not other_participants:
+                        logger.warning(f"会话 {conversation.id} 没有找到另一个参与者，跳过")
+                        continue
+                    
+                    other_participant_id = other_participants[0].user_id
+                    # 确保 ID 是字符串类型，避免类型不匹配错误
+                    other_participant_id_str = str(other_participant_id)
+                    
+                    # 5.2 判断另一个参与者是用户还是角色，获取name
+                    other_participant_name = None
+                    
+                    # 先尝试作为用户查询
+                    other_load = db.query(Load).filter(Load.id == other_participant_id_str).first()
+                    if other_load:
+                        other_participant_name = other_load.name
+                    else:
+                        # 如果不是用户，尝试作为角色查询
+                        other_role = db.query(Role).filter(Role.id == other_participant_id_str).first()
+                        if other_role:
+                            other_participant_name = other_role.name
+                    
+                    if not other_participant_name:
+                        logger.warning(f"会话 {conversation.id} 的另一个参与者 {other_participant_id} 未找到名称，跳过")
+                        continue
+                    
+                    # 5.3 查询该会话的最近10条消息（按时间降序取前10，然后按时间正序排列）
+                    recent_messages = db.query(Message).filter(
+                        Message.conversation_id == conversation.id
+                    ).order_by(Message.created_at.desc()).limit(10).all()
+                    
+                    # 反转列表，使消息按时间正序排列
+                    recent_messages = list(reversed(recent_messages))
+                    
+                    if not recent_messages:
+                        logger.warning(f"会话 {conversation.id} 没有消息，跳过")
+                        continue
+                    
+                    # 5.4 构建文档内容
+                    # 获取第一条消息的日期
+                    first_message_date = recent_messages[0].created_at
+                    date_str = first_message_date.strftime('%Y-%m-%d') if first_message_date else "未知日期"
+                    
+                    # 构建消息列表（类似chat接口的messages格式，但用用户名称替换role）
+                    messages_list = []
+                    # 确保 load_id 是字符串类型
+                    load_id_str = str(load_id)
+                    for msg in recent_messages:
+                        # 判断发送者是当前用户还是另一个参与者
+                        msg_sender_id_str = str(msg.sender_id)
+                        if msg_sender_id_str == load_id_str:
+                            sender_name = user_name
+                        else:
+                            sender_name = other_participant_name
+                        
+                        messages_list.append({
+                            "role": sender_name,
+                            "content": msg.content
+                        })
+                    
+                    # 构建文档内容
+                    document_content = f"我是{user_name},这是我和{other_participant_name}[{date_str}]的聊天记录：\n"
+                    document_content += json.dumps(messages_list, ensure_ascii=False, indent=2)
+                    
+                    # 5.5 生成文件名
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    title_prefix = title if title else "聊天记录"
+                    filename = f"{title_prefix}_{other_participant_name}_{timestamp}.txt"
+                    
+                    # 5.6 创建临时文件对象
+                    file_content = document_content.encode('utf-8')
+                    file_obj = BytesIO(file_content)
+                    file_obj.name = filename
+                    
+                    # 创建 UploadFile 对象
+                    upload_file = UploadFile(
+                        file=file_obj,
+                        filename=filename
+                    )
+                    
+                    # 5.7 准备元数据
+                    metadata = {
+                        'title': f"{title_prefix}_{other_participant_name}_{date_str}",
+                        'description': description if description else f"与{other_participant_name}的聊天记录"
+                    }
+                    
+                    # 5.8 调用现有的文档上传逻辑（使用当前用户的角色ID）
+                    result = self.upload_file(db, upload_file, metadata, role_id)
+                    
+                    if result.get("data"):
+                        created_documents.append({
+                            "conversation_id": str(conversation.id),  # 确保转换为字符串
+                            "document_id": result.get("data", {}).get("document_id"),
+                            "filename": filename,
+                            "participant_name": other_participant_name
+                        })
+                    
+                except Exception as e:
+                    logger.error(f"处理会话 {conversation.id} 时出错: {str(e)}", exc_info=True)
+                    continue
+            
+            if not created_documents:
+                raise HTTPException(status_code=404, detail="没有成功创建任何文档")
+            
+            return {
+                "success": True,
+                "message": f"成功创建 {len(created_documents)} 个文档",
+                "data": {
+                    "created_count": len(created_documents),
+                    "documents": created_documents
+                }
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"导出消息为文档失败: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"导出消息为文档失败: {str(e)}")
 

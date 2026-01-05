@@ -1,10 +1,10 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import or_
+from sqlalchemy import or_, and_, func
 from typing import Tuple, Optional, List
 from datetime import datetime
 import logging
-from app.models.conversation import Conversation, Message
+from app.models.conversation import Conversation, ConversationParticipant, Message
 
 logger = logging.getLogger(__name__)
 
@@ -15,20 +15,18 @@ class ConversationService:
     @staticmethod
     def get_or_create_conversation(
         db: Session,
-        user_id: str,
-        participant_id: str,
-        participant_type: str,
+        participant_ids: List[str],
+        conversation_type: str = 'single',
         title: Optional[str] = None
     ) -> Tuple[Optional[Conversation], Optional[str], int]:
         """
-        获取或创建会话（支持双向查询）
-        如果会话存在（无论谁发起），返回现有会话；不存在则创建新会话
+        获取或创建会话（支持单聊和群聊）
+        如果会话存在（包含所有指定的参与者），返回现有会话；不存在则创建新会话
         
         Args:
             db: 数据库会话
-            user_id: 用户ID（loads.id）
-            participant_id: 参与者ID（roles.id 或其他用户ID）
-            participant_type: 参与者类型（必传，如 'role'）
+            participant_ids: 参与者ID列表（loads.id 或 roles.id 的列表）
+            conversation_type: 会话类型（'single' 单聊, 'group' 群聊，默认 'single'）
             title: 会话标题（可选）
             
         Returns:
@@ -38,58 +36,80 @@ class ConversationService:
         """
         try:
             # 验证必填字段
-            if not user_id or not user_id.strip():
-                return None, "用户ID不能为空", 400
-            if not participant_id or not participant_id.strip():
-                return None, "参与者ID不能为空", 400
+            if not participant_ids or len(participant_ids) == 0:
+                return None, "参与者ID列表不能为空", 400
             
-            user_id = user_id.strip()
-            participant_id = participant_id.strip()
-            participant_type = participant_type.strip()
+            # 去重并清理
+            participant_ids = list(set([pid.strip() for pid in participant_ids if pid and pid.strip()]))
             
-            # 双向查询：检查两种组合
-            # 1. user_id = A, participant_id = B
-            # 2. user_id = B, participant_id = A
-            existing_conversation = db.query(Conversation).filter(
-                or_(
-                    (Conversation.user_id == user_id) & (Conversation.participant_id == participant_id),
-                    (Conversation.user_id == participant_id) & (Conversation.participant_id == user_id)
-                ),
-                Conversation.participant_type == participant_type
+            if len(participant_ids) == 0:
+                return None, "参与者ID列表不能为空", 400
+            
+            # 验证会话类型
+            if conversation_type not in ['single', 'group']:
+                return None, f"无效的会话类型: {conversation_type}。允许的类型: 'single', 'group'", 400
+            
+            # 对于单聊，必须恰好有2个参与者
+            if conversation_type == 'single' and len(participant_ids) != 2:
+                return None, f"单聊会话必须恰好有2个参与者，当前有 {len(participant_ids)} 个", 400
+            
+            # 查找包含所有指定参与者的会话
+            existing_conversation = db.query(Conversation).join(
+                ConversationParticipant
+            ).filter(
+                Conversation.conversation_type == conversation_type,
+                ConversationParticipant.user_id.in_(participant_ids)
+            ).group_by(Conversation.id).having(
+                func.count(ConversationParticipant.user_id.distinct()) == len(participant_ids)
             ).first()
             
             if existing_conversation:
-                logger.info(f"找到已存在会话: {existing_conversation.id} - user_id: {user_id}, participant_id: {participant_id}")
+                logger.info(f"找到已存在会话: {existing_conversation.id} - 参与者: {participant_ids}")
                 return existing_conversation, None, 200
             
-            # 创建新会话（总是以传入的user_id为主）
+            # 创建新会话
             new_conversation = Conversation(
-                user_id=user_id,
-                participant_id=participant_id,
-                participant_type=participant_type,
-                title=title.strip() if title else None,
-                unread_count=0,
-                is_pinned=False,
-                is_muted=False
+                conversation_type=conversation_type,
+                title=title.strip() if title else None
             )
-            
             db.add(new_conversation)
+            db.flush()  # 获取conversation.id
+            
+            # 为所有参与者创建记录
+            # 注意：conversation_participants.user_id 字段存储的是参与者ID，可能是用户ID（loads.id）或角色ID（roles.id）
+            for participant_id in participant_ids:
+                participant = ConversationParticipant(
+                    conversation_id=new_conversation.id,
+                    user_id=participant_id  # 参与者ID（loads.id 或 roles.id）
+                )
+                db.add(participant)
+            
             db.commit()
             db.refresh(new_conversation)
             
-            logger.info(f"成功创建新会话: {new_conversation.id} - user_id: {user_id}, participant_id: {participant_id}")
+            # 验证插入的数据
+            inserted_participants = db.query(ConversationParticipant).filter(
+                ConversationParticipant.conversation_id == new_conversation.id
+            ).all()
+            logger.info(f"成功创建新会话: {new_conversation.id} - 类型: {conversation_type}")
+            logger.info(f"  - 参与者列表: {participant_ids}")
+            logger.info(f"  - 实际插入的参与者数量: {len(inserted_participants)}")
+            for p in inserted_participants:
+                logger.info(f"    * participant_id={p.id}, user_id={p.user_id}")
+            
             return new_conversation, None, 200
             
         except IntegrityError as e:
             db.rollback()
             # 如果是因为唯一约束冲突，尝试再次查询
-            if "uq_conversation_participants" in str(e):
-                existing_conversation = db.query(Conversation).filter(
-                    or_(
-                        (Conversation.user_id == user_id) & (Conversation.participant_id == participant_id),
-                        (Conversation.user_id == participant_id) & (Conversation.participant_id == user_id)
-                    ),
-                    Conversation.participant_type == participant_type
+            if "uq_conversation_user" in str(e):
+                existing_conversation = db.query(Conversation).join(
+                    ConversationParticipant
+                ).filter(
+                    Conversation.conversation_type == conversation_type,
+                    ConversationParticipant.user_id.in_(participant_ids)
+                ).group_by(Conversation.id).having(
+                    func.count(ConversationParticipant.user_id.distinct()) == len(participant_ids)
                 ).first()
                 if existing_conversation:
                     return existing_conversation, None, 200
@@ -134,7 +154,7 @@ class ConversationService:
         db: Session,
         participant1_id: str,
         participant2_id: str,
-        participant_type: str = 'role'
+        conversation_type: str = 'single'
     ) -> Tuple[Optional[Conversation], Optional[str], int]:
         """
         获取两个参与者之间的会话（无论谁发起）
@@ -143,18 +163,19 @@ class ConversationService:
             db: 数据库会话
             participant1_id: 参与者1的ID
             participant2_id: 参与者2的ID
-            participant_type: 参与者类型（默认 'role'）
+            conversation_type: 会话类型（默认 'single'）
             
         Returns:
             Tuple[Conversation对象, 错误消息, HTTP状态码]
         """
         try:
-            conversation = db.query(Conversation).filter(
-                or_(
-                    (Conversation.user_id == participant1_id) & (Conversation.participant_id == participant2_id),
-                    (Conversation.user_id == participant2_id) & (Conversation.participant_id == participant1_id)
-                ),
-                Conversation.participant_type == participant_type
+            conversation = db.query(Conversation).join(
+                ConversationParticipant
+            ).filter(
+                Conversation.conversation_type == conversation_type,
+                ConversationParticipant.user_id.in_([participant1_id, participant2_id])
+            ).group_by(Conversation.id).having(
+                func.count(ConversationParticipant.user_id.distinct()) == 2
             ).first()
             
             if not conversation:
@@ -186,11 +207,13 @@ class ConversationService:
             Tuple[会话列表, 错误消息, HTTP状态码]
         """
         try:
-            query = db.query(Conversation).filter(
-                Conversation.user_id == user_id
+            # 通过conversation_participants表查找用户参与的所有会话
+            query = db.query(Conversation).join(
+                ConversationParticipant
+            ).filter(
+                ConversationParticipant.user_id == user_id
             ).order_by(
-                Conversation.last_message_at.desc().nulls_last(),
-                Conversation.created_at.desc()
+                Conversation.updated_at.desc()
             )
             
             if limit:
@@ -207,9 +230,7 @@ class ConversationService:
     def update_conversation(
         db: Session,
         conversation_id: str,
-        title: Optional[str] = None,
-        is_pinned: Optional[bool] = None,
-        is_muted: Optional[bool] = None
+        title: Optional[str] = None
     ) -> Tuple[bool, Optional[str]]:
         """
         更新会话信息
@@ -218,8 +239,6 @@ class ConversationService:
             db: 数据库会话
             conversation_id: 会话ID
             title: 会话标题（可选）
-            is_pinned: 是否置顶（可选）
-            is_muted: 是否静音（可选）
             
         Returns:
             Tuple[是否成功, 错误信息]
@@ -234,10 +253,6 @@ class ConversationService:
             
             if title is not None:
                 conversation.title = title.strip() if title else None
-            if is_pinned is not None:
-                conversation.is_pinned = is_pinned
-            if is_muted is not None:
-                conversation.is_muted = is_muted
             
             conversation.updated_at = datetime.utcnow()
             db.commit()
@@ -257,12 +272,12 @@ class ConversationService:
         last_message_content: str
     ) -> Tuple[bool, Optional[str]]:
         """
-        更新会话的最后一条消息信息
+        更新会话的最后一条消息信息（通过更新updated_at来反映最后消息时间）
         
         Args:
             db: 数据库会话
             conversation_id: 会话ID
-            last_message_content: 最后一条消息内容
+            last_message_content: 最后一条消息内容（保留参数以兼容旧代码）
             
         Returns:
             Tuple[是否成功, 错误信息]
@@ -275,10 +290,7 @@ class ConversationService:
             if not conversation:
                 return False, f"未找到ID为 {conversation_id} 的会话"
             
-            conversation.last_message_at = datetime.utcnow()
-            conversation.last_message_content = last_message_content
             conversation.updated_at = datetime.utcnow()
-            
             db.commit()
             
             logger.info(f"成功更新会话 {conversation_id} 的最后一条消息")
@@ -290,73 +302,66 @@ class ConversationService:
             return False, str(e)
     
     @staticmethod
-    def increment_unread_count(
-        db: Session,
-        conversation_id: str,
-        increment: int = 1
-    ) -> Tuple[bool, Optional[str]]:
-        """
-        增加会话的未读消息数
-        
-        Args:
-            db: 数据库会话
-            conversation_id: 会话ID
-            increment: 增加的数量（默认1）
-            
-        Returns:
-            Tuple[是否成功, 错误信息]
-        """
-        try:
-            conversation = db.query(Conversation).filter(
-                Conversation.id == conversation_id
-            ).first()
-            
-            if not conversation:
-                return False, f"未找到ID为 {conversation_id} 的会话"
-            
-            conversation.unread_count = (conversation.unread_count or 0) + increment
-            conversation.updated_at = datetime.utcnow()
-            
-            db.commit()
-            return True, None
-            
-        except Exception as e:
-            db.rollback()
-            logger.error(f"增加未读消息数失败: {str(e)}", exc_info=True)
-            return False, str(e)
-    
-    @staticmethod
-    def reset_unread_count(
+    def get_conversation_participants(
         db: Session,
         conversation_id: str
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> Tuple[List[ConversationParticipant], Optional[str], int]:
         """
-        重置会话的未读消息数为0
+        获取会话的所有参与者
         
         Args:
             db: 数据库会话
             conversation_id: 会话ID
             
         Returns:
+            Tuple[参与者列表, 错误消息, HTTP状态码]
+        """
+        try:
+            participants = db.query(ConversationParticipant).filter(
+                ConversationParticipant.conversation_id == conversation_id
+            ).all()
+            
+            return participants, None, 200
+            
+        except Exception as e:
+            logger.error(f"获取会话参与者失败: {str(e)}", exc_info=True)
+            return [], f"获取会话参与者失败: {str(e)}", 500
+    
+    @staticmethod
+    def update_participant_last_read(
+        db: Session,
+        conversation_id: str,
+        user_id: str
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        更新参与者的最后阅读时间
+        
+        Args:
+            db: 数据库会话
+            conversation_id: 会话ID
+            user_id: 用户ID
+            
+        Returns:
             Tuple[是否成功, 错误信息]
         """
         try:
-            conversation = db.query(Conversation).filter(
-                Conversation.id == conversation_id
+            participant = db.query(ConversationParticipant).filter(
+                ConversationParticipant.conversation_id == conversation_id,
+                ConversationParticipant.user_id == user_id
             ).first()
             
-            if not conversation:
-                return False, f"未找到ID为 {conversation_id} 的会话"
+            if not participant:
+                return False, f"未找到会话 {conversation_id} 中用户 {user_id} 的参与者记录"
             
-            conversation.unread_count = 0
-            conversation.updated_at = datetime.utcnow()
-            
+            participant.last_read_at = datetime.utcnow()
             db.commit()
+            
+            logger.info(f"成功更新参与者 {user_id} 在会话 {conversation_id} 的最后阅读时间")
             return True, None
             
         except Exception as e:
             db.rollback()
-            logger.error(f"重置未读消息数失败: {str(e)}", exc_info=True)
+            logger.error(f"更新参与者最后阅读时间失败: {str(e)}", exc_info=True)
             return False, str(e)
     
     @staticmethod
@@ -365,7 +370,7 @@ class ConversationService:
         conversation_id: str
     ) -> Tuple[bool, Optional[str]]:
         """
-        删除会话（级联删除相关消息）
+        删除会话（级联删除相关消息和参与者）
         
         Args:
             db: 数据库会话
@@ -392,4 +397,3 @@ class ConversationService:
             db.rollback()
             logger.error(f"删除会话失败: {str(e)}", exc_info=True)
             return False, str(e)
-

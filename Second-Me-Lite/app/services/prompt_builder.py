@@ -58,7 +58,7 @@ class RoleBasedStrategy(SystemPromptStrategy):
             role_id = request.metadata.get('role_id')
         
         if role_id and db:
-            role, error, status = RoleService.get_role_by_uuid(db, role_id)
+            role, error, status = RoleService.get_role_by_id(db, role_id)
             if role and status == 200:
                 prompt = role.system_prompt
                 logger.info(f"RoleBasedStrategy (from role): {prompt}")
@@ -106,7 +106,7 @@ class KnowledgeEnhancedStrategy(SystemPromptStrategy):
         
         # 如果角色存在，从角色表读取配置并执行检索
         if role_id and db:
-            role, error, status = RoleService.get_role_by_uuid(db, role_id)
+            role, error, status = RoleService.get_role_by_id(db, role_id)
             if role and status == 200:
                 # L0 检索
                 if role.enable_l0_retrieval:

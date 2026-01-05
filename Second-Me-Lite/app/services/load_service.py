@@ -169,7 +169,7 @@ class LoadService:
             # 如果更新了 name，同步更新 roles 表中对应 uuid 的记录
             # 注意：更新description时不自动更新system_prompt，需要单独调用generate_system_prompt
             if name is not None:
-                success_role, error_role = RoleService.update_role_by_uuid(
+                success_role, error_role, role_id = RoleService.update_role_by_uuid(
                     db=db,
                     uuid=load_id,
                     name=name.strip() if name is not None else None

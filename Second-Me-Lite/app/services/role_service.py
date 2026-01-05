@@ -126,13 +126,37 @@ class RoleService:
             return None, f"创建角色失败: {str(e)}", 500
     
     @staticmethod
-    def get_role_by_uuid(db: Session, uuid: str) -> Tuple[Optional[Role], Optional[str], int]:
+    def get_role_by_id(db: Session, role_id: str) -> Tuple[Optional[Role], Optional[str], int]:
         """
-        根据UUID获取角色
+        根据角色ID获取角色（根据 roles.id 查询）
         
         Args:
             db: 数据库会话
-            uuid: 角色UUID
+            role_id: 角色ID（roles.id）
+            
+        Returns:
+            Tuple[Role对象, 错误消息, HTTP状态码]
+        """
+        try:
+            role = db.query(Role).filter(Role.id == role_id).first()
+            
+            if not role:
+                return None, f"未找到ID为 {role_id} 的角色", 404
+            
+            return role, None, 200
+            
+        except Exception as e:
+            logger.error(f"获取角色失败: {str(e)}", exc_info=True)
+            return None, f"获取角色失败: {str(e)}", 500
+    
+    @staticmethod
+    def get_role_by_uuid(db: Session, uuid: str) -> Tuple[Optional[Role], Optional[str], int]:
+        """
+        根据用户UUID获取角色（根据 roles.uuid 查询，用于根据 loads.id 查找角色）
+        
+        Args:
+            db: 数据库会话
+            uuid: 用户UUID（loads.id，对应 roles.uuid）
             
         Returns:
             Tuple[Role对象, 错误消息, HTTP状态码]
@@ -151,9 +175,9 @@ class RoleService:
     
     
     @staticmethod
-    def update_role_by_uuid(
+    def update_role_by_id(
         db: Session,
-        uuid: str,
+        role_id: str,
         name: Optional[str] = None,
         description: Optional[str] = None,
         system_prompt: Optional[str] = None,
@@ -161,15 +185,14 @@ class RoleService:
         is_active: Optional[bool] = None,
         enable_l0_retrieval: Optional[bool] = None,
         enable_l1_retrieval: Optional[bool] = None
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> Tuple[bool, Optional[str], Optional[str]]:
         """
-        根据UUID更新角色信息（一个用户只有一个角色）
-        如果角色不存在，则创建新角色（用于输入昵称时创建role记录）
+        根据角色ID更新角色信息（根据 roles.id 查询和更新）
         
         Args:
             db: 数据库会话
-            uuid: 角色UUID（对应loads.id）
-            name: 角色名称（可选，创建时必填）
+            role_id: 角色ID（roles.id）
+            name: 角色名称（可选）
             description: 描述（可选）
             system_prompt: 系统提示词（可选）
             icon: 图标（可选）
@@ -178,96 +201,23 @@ class RoleService:
             enable_l1_retrieval: 是否启用L1检索（可选）
             
         Returns:
-            Tuple[是否成功, 错误信息]
+            Tuple[是否成功, 错误信息, 角色ID]
         """
         try:
-            role = db.query(Role).filter(Role.uuid == uuid).first()
+            role = db.query(Role).filter(Role.id == role_id).first()
             
-            # 如果角色不存在，创建新角色
             if not role:
-                # 创建角色时需要name
-                if not name or not name.strip():
-                    return False, f"创建角色时name不能为空"
-                
-                # 获取loads信息以获取loads.name（用于生成system_prompt）
-                from app.models.load import Load
-                load = db.query(Load).filter(Load.id == uuid).first()
-                if not load:
-                    return False, f"未找到ID为 {uuid} 的用户"
-                
-                # 创建新角色
-                # 注意：roles.id 会自动生成独立UUID，roles.uuid = loads.id
-                # 此时不生成system_prompt，等到信息采集完成时才生成
-                role, role_error, role_status = RoleService.create_role(
-                    db=db,
-                    user_uuid=uuid,
-                    name=name.strip(),
-                    description=description.strip() if description else None,
-                    system_prompt="",  # 暂时为空，等信息采集完成时再生成
-                    icon=icon,
-                    is_active=is_active if is_active is not None else True,
-                    enable_l0_retrieval=enable_l0_retrieval if enable_l0_retrieval is not None else True,
-                    enable_l1_retrieval=enable_l1_retrieval if enable_l1_retrieval is not None else True,
-                    load_name=None  # 不传入load_name，这样不会自动生成system_prompt
-                )
-                
-                if role_error and role_status != 200:
-                    return False, f"创建角色失败: {role_error}"
-                
-                # 创建成功后，刷新role对象
-                role = db.query(Role).filter(Role.uuid == uuid).first()
-                if not role:
-                    return False, "创建角色后无法找到角色记录"
-                
-                # 如果创建了新角色，且传入了其他字段，需要更新这些字段
-                # 但name已经在创建时设置了，跳过
-                update_needed = False
-                if description is not None and description != role.description:
-                    role.description = description.strip() if description else None
-                    update_needed = True
-                if system_prompt is not None and system_prompt != role.system_prompt:
-                    role.system_prompt = system_prompt
-                    update_needed = True
-                if icon is not None and icon != role.icon:
-                    role.icon = icon
-                    update_needed = True
-                if is_active is not None and is_active != role.is_active:
-                    role.is_active = is_active
-                    update_needed = True
-                if enable_l0_retrieval is not None and enable_l0_retrieval != role.enable_l0_retrieval:
-                    role.enable_l0_retrieval = enable_l0_retrieval
-                    update_needed = True
-                if enable_l1_retrieval is not None and enable_l1_retrieval != role.enable_l1_retrieval:
-                    role.enable_l1_retrieval = enable_l1_retrieval
-                    update_needed = True
-                
-                if update_needed:
-                    from datetime import datetime
-                    role.update_time = datetime.utcnow()
-                    db.commit()
-                    logger.info(f"成功创建并更新UUID为 {uuid} 的角色信息")
-                    return True, None
-                else:
-                    logger.info(f"成功创建UUID为 {uuid} 的角色")
-                    return True, None
+                return False, f"未找到ID为 {role_id} 的角色", None
             
-            # 更新角色信息（角色已存在的情况）
+            # 更新角色信息
             if name is not None:
-                # 检查名称是否与其他角色冲突（排除当前角色）
-                existing_role = db.query(Role).filter(
-                    Role.name == name.strip(),
-                    Role.uuid != role.uuid
-                ).first()
-                if existing_role:
-                    return False, f"角色名称 {name} 已被其他角色使用"
-                
                 role.name = name.strip()
                 
                 # 创建l1_versions和l1_bios的初始记录（如果不存在）
                 # 这个方法内部会检查是否已存在，避免重复创建
                 success_l1, error_l1 = L1BioService.create_initial_l1_version_and_bio(
                     db=db,
-                    role_id=role.uuid
+                    role_id=role.id
                 )
                 if not success_l1:
                     logger.warning(f"更新角色name成功，但创建l1_versions和l1_bios失败: {error_l1}")
@@ -296,17 +246,176 @@ class RoleService:
             role.update_time = datetime.utcnow()
             
             db.commit()
-            logger.info(f"成功更新UUID为 {uuid} 的角色信息")
-            return True, None
+            db.refresh(role)
+            
+            # 返回角色ID
+            logger.info(f"成功更新ID为 {role_id} 的角色信息")
+            return True, None, role_id
             
         except IntegrityError as e:
             db.rollback()
             logger.error(f"数据库完整性错误: {str(e)}", exc_info=True)
-            return False, "更新角色失败：数据完整性错误"
+            return False, "更新角色失败：数据完整性错误", None
         except Exception as e:
             db.rollback()
             logger.error(f"更新角色信息失败: {str(e)}", exc_info=True)
-            return False, str(e)
+            return False, str(e), None
+    
+    @staticmethod
+    def update_role_by_uuid(
+        db: Session,
+        uuid: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+        icon: Optional[str] = None,
+        is_active: Optional[bool] = None,
+        enable_l0_retrieval: Optional[bool] = None,
+        enable_l1_retrieval: Optional[bool] = None
+    ) -> Tuple[bool, Optional[str], Optional[str]]:
+        """
+        根据用户UUID更新角色信息（根据 roles.uuid 查询，一个用户只有一个角色）
+        如果角色不存在，则创建新角色（用于输入昵称时创建role记录）
+        
+        Args:
+            db: 数据库会话
+            uuid: 用户UUID（loads.id，对应 roles.uuid）
+            name: 角色名称（可选，创建时必填）
+            description: 描述（可选）
+            system_prompt: 系统提示词（可选）
+            icon: 图标（可选）
+            is_active: 是否激活（可选）
+            enable_l0_retrieval: 是否启用L0检索（可选）
+            enable_l1_retrieval: 是否启用L1检索（可选）
+            
+        Returns:
+            Tuple[是否成功, 错误信息, 角色ID]
+        """
+        try:
+            role = db.query(Role).filter(Role.uuid == uuid).first()
+            
+            # 如果角色不存在，创建新角色
+            if not role:
+                # 创建角色时需要name
+                if not name or not name.strip():
+                    return False, f"创建角色时name不能为空", None
+                
+                # 获取loads信息以获取loads.name（用于生成system_prompt）
+                from app.models.load import Load
+                load = db.query(Load).filter(Load.id == uuid).first()
+                if not load:
+                    return False, f"未找到ID为 {uuid} 的用户", None
+                
+                # 创建新角色
+                # 注意：roles.id 会自动生成独立UUID，roles.uuid = loads.id
+                # 此时不生成system_prompt，等到信息采集完成时才生成
+                role, role_error, role_status = RoleService.create_role(
+                    db=db,
+                    user_uuid=uuid,
+                    name=name.strip(),
+                    description=description.strip() if description else None,
+                    system_prompt="",  # 暂时为空，等信息采集完成时再生成
+                    icon=icon,
+                    is_active=is_active if is_active is not None else True,
+                    enable_l0_retrieval=enable_l0_retrieval if enable_l0_retrieval is not None else True,
+                    enable_l1_retrieval=enable_l1_retrieval if enable_l1_retrieval is not None else True,
+                    load_name=None  # 不传入load_name，这样不会自动生成system_prompt
+                )
+                
+                if role_error and role_status != 200:
+                    return False, f"创建角色失败: {role_error}", None
+                
+                # 创建成功后，刷新role对象
+                role = db.query(Role).filter(Role.uuid == uuid).first()
+                if not role:
+                    return False, "创建角色后无法找到角色记录", None
+                
+                # 如果创建了新角色，且传入了其他字段，需要更新这些字段
+                # 但name已经在创建时设置了，跳过
+                update_needed = False
+                if description is not None and description != role.description:
+                    role.description = description.strip() if description else None
+                    update_needed = True
+                if system_prompt is not None and system_prompt != role.system_prompt:
+                    role.system_prompt = system_prompt
+                    update_needed = True
+                if icon is not None and icon != role.icon:
+                    role.icon = icon
+                    update_needed = True
+                if is_active is not None and is_active != role.is_active:
+                    role.is_active = is_active
+                    update_needed = True
+                if enable_l0_retrieval is not None and enable_l0_retrieval != role.enable_l0_retrieval:
+                    role.enable_l0_retrieval = enable_l0_retrieval
+                    update_needed = True
+                if enable_l1_retrieval is not None and enable_l1_retrieval != role.enable_l1_retrieval:
+                    role.enable_l1_retrieval = enable_l1_retrieval
+                    update_needed = True
+                
+                if update_needed:
+                    from datetime import datetime
+                    role.update_time = datetime.utcnow()
+                    db.commit()
+                    db.refresh(role)
+                
+                # 返回角色ID
+                role_id = str(role.id)
+                logger.info(f"成功创建UUID为 {uuid} 的角色，角色ID: {role_id}")
+                return True, None, role_id
+            
+            # 更新角色信息（角色已存在的情况）
+            if name is not None:
+                # 允许名称重复，直接更新
+                role.name = name.strip()
+                
+                # 创建l1_versions和l1_bios的初始记录（如果不存在）
+                # 这个方法内部会检查是否已存在，避免重复创建
+                success_l1, error_l1 = L1BioService.create_initial_l1_version_and_bio(
+                    db=db,
+                    role_id=role.id
+                )
+                if not success_l1:
+                    logger.warning(f"更新角色name成功，但创建l1_versions和l1_bios失败: {error_l1}")
+                    # 不返回错误，因为角色已经更新成功
+            
+            if description is not None:
+                role.description = description.strip() if description else None
+            
+            if system_prompt is not None:
+                role.system_prompt = system_prompt
+            
+            if icon is not None:
+                role.icon = icon
+            
+            if is_active is not None:
+                role.is_active = is_active
+            
+            if enable_l0_retrieval is not None:
+                role.enable_l0_retrieval = enable_l0_retrieval
+            
+            if enable_l1_retrieval is not None:
+                role.enable_l1_retrieval = enable_l1_retrieval
+            
+            # 更新 update_time 时间戳
+            from datetime import datetime
+            role.update_time = datetime.utcnow()
+            
+            db.commit()
+            db.refresh(role)
+            
+            # 返回角色ID
+            role_id = str(role.id)
+            logger.info(f"成功更新UUID为 {uuid} 的角色信息，角色ID: {role_id}")
+            return True, None, role_id
+            
+        except IntegrityError as e:
+            db.rollback()
+            logger.error(f"数据库完整性错误: {str(e)}", exc_info=True)
+            return False, "更新角色失败：数据完整性错误", None
+        except Exception as e:
+            db.rollback()
+            logger.error(f"更新角色信息失败: {str(e)}", exc_info=True)
+            return False, str(e), None
     
     @staticmethod
     def submit_info_collection(
@@ -316,7 +425,7 @@ class RoleService:
         system_prompt: str,
         content: Optional[str] = None,
         content_third_view: Optional[str] = None
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> Tuple[bool, Optional[str], Optional[str]]:
         """
         提交信息采集数据：更新roles表
         
@@ -329,16 +438,16 @@ class RoleService:
             content_third_view: AI生成的性格评价和MBTI（已废弃，不再存储）
             
         Returns:
-            Tuple[是否成功, 错误信息]
+            Tuple[是否成功, 错误信息, 角色ID]
         """
         try:
             # 获取角色信息
             role = db.query(Role).filter(Role.uuid == uuid).first()
             if not role:
-                return False, f"未找到UUID为 {uuid} 的角色"
+                return False, f"未找到UUID为 {uuid} 的角色", None
             
             # 更新roles表（description和system_prompt）
-            success_role, error_role = RoleService.update_role_by_uuid(
+            success_role, error_role, role_id = RoleService.update_role_by_uuid(
                 db=db,
                 uuid=uuid,
                 description=description if description else None,
@@ -346,16 +455,20 @@ class RoleService:
             )
             
             if not success_role:
-                return False, f"更新roles表失败: {error_role}"
+                return False, f"更新roles表失败: {error_role}", None
             
             db.commit()
             
-            logger.info(f"成功提交信息采集数据: uuid={uuid}")
-            return True, None
+            # 刷新角色对象以获取最新数据
+            role = db.query(Role).filter(Role.uuid == uuid).first()
+            role_id = str(role.id) if role else None
+            
+            logger.info(f"成功提交信息采集数据: uuid={uuid}, role_id={role_id}")
+            return True, None, role_id
         except Exception as e:
             db.rollback()
             logger.error(f"提交信息采集数据失败: {str(e)}", exc_info=True)
-            return False, str(e)
+            return False, str(e), None
     
     @staticmethod
     def generate_system_prompt(
@@ -398,7 +511,7 @@ class RoleService:
             )
             
             # 更新角色的system_prompt
-            success_role, error_role = RoleService.update_role_by_uuid(
+            success_role, error_role, role_id = RoleService.update_role_by_uuid(
                 db=db,
                 uuid=uuid,
                 system_prompt=system_prompt

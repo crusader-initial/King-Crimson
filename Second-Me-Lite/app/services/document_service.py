@@ -4,6 +4,8 @@ from app.services.insight_kernel import InsightKernel
 from app.services.summary_kernel import SummaryKernel
 from app.services.document_repository import DocumentRepository
 from app.services.embedding_service import EmbeddingService, ChunkDTO
+from app.services.chunk_service import DocumentChunker, ChunkService
+from app.core.config import Config
 from typing import Optional, List, Dict
 import logging
 import json
@@ -252,6 +254,59 @@ class DocumentService:
                 chunk_embeddings[chunk.id] = embedding
         
         return chunk_embeddings
+
+    def process_document_chunks(self, db: Session, document_id: int) -> int:
+        """
+        处理文档分块：将文档内容分割成 chunks 并保存到数据库
+        
+        Args:
+            db: 数据库会话
+            document_id: 文档ID
+            
+        Returns:
+            int: 创建的 chunks 数量
+            
+        Raises:
+            ValueError: 文档不存在或没有内容
+            Exception: 处理失败
+        """
+        try:
+            document = self._repository.find_one(document_id=document_id)
+            if not document:
+                raise ValueError(f"Document not found with id: {document_id}")
+            
+            if not document.raw_content:
+                logger.warning(f"Document {document_id} has no content to process chunks")
+                raise ValueError(f"Document {document_id} has no content")
+            
+            # 获取配置
+            config = Config.from_env()
+            chunker = DocumentChunker(
+                chunk_size=int(config.get("DOCUMENT_CHUNK_SIZE", 500)),
+                overlap=int(config.get("DOCUMENT_CHUNK_OVERLAP", 50)),
+            )
+            
+            # 分割成 chunks
+            chunks = chunker.split(document.raw_content)
+            
+            # 保存 chunks
+            chunk_service = ChunkService()
+            for chunk in chunks:
+                chunk.document_id = document_id
+                chunk_service.save_chunk(chunk)
+            
+            # 提交更改
+            db.commit()
+            
+            logger.info(f"Document {document_id} processed: created {len(chunks)} chunks")
+            return len(chunks)
+            
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.error(f"Error processing document chunks for document {document_id}: {str(e)}")
+            db.rollback()
+            raise
 
     def generate_document_chunk_embeddings(self, document_id: int) -> List[ChunkDTO]:
         """

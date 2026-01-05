@@ -54,11 +54,10 @@ export default function ChatScreen() {
         setRoleId(currentRoleId);
         setRoleName(currentRoleName);
 
-        // 2. 获取或创建会话
+        // 2. 获取或创建会话（传入参与者ID列表和会话类型）
         const conversationResponse = await createConversation(
-          userId, 
-          currentRoleId, 
-          'role', 
+          [userId, currentRoleId],  // 参与者列表：用户ID和角色ID
+          'single',  // 单聊
           '和"我"的对话'
         );
         
@@ -119,9 +118,10 @@ export default function ChatScreen() {
           await createMessage(
             conversationId,
             userId,  // 发送者：用户ID
-            roleId,  // 接收者：角色ID
             messageText,
-            'text'
+            'text',
+            null,
+            'user'  // 发送者类型：用户
           );
         } catch (msgError) {
           console.error('保存用户消息失败:', msgError);
@@ -150,9 +150,10 @@ export default function ChatScreen() {
           await createMessage(
             conversationId,
             roleId,  // 发送者：角色ID（AI）
-            userId,  // 接收者：用户ID
             response.answer,
-            'text'
+            'text',
+            null,
+            'ai'  // 发送者类型：AI
           );
         } catch (msgError) {
           console.error('保存AI消息失败:', msgError);

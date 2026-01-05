@@ -9,7 +9,7 @@ class Role(Base):
     
     id = Column(String(36), primary_key=True)  # 角色独立ID（varchar(36)），自动生成的UUID
     uuid = Column(String(64), nullable=False, unique=True)  # 用户ID（varchar(64)），关联到 loads.id，用于关联用户
-    name = Column(String(100), nullable=False, unique=True)
+    name = Column(String(100), nullable=False)  # 角色名称，允许重复
     description = Column(String(500), nullable=True)
     system_prompt = Column(Text, nullable=False)
     icon = Column(String(100), nullable=True)

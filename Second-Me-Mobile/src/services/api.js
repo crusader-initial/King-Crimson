@@ -162,12 +162,12 @@ export const sendChatMessage = async (query, roleId, historyMessages = []) => {
 };
 
 // 创建会话记录（用于信息采集界面初始化）
-export const createConversation = async (userId, participantId, participantType = 'role', title = null) => {
+// 新接口：传入参与者ID列表和会话类型
+export const createConversation = async (participantIds, conversationType = 'single', title = null) => {
   try {
     const response = await api.post('/conversations', {
-      user_id: userId,
-      participant_id: participantId,
-      participant_type: participantType,
+      participant_ids: participantIds,  // 参与者ID列表（loads.id 或 roles.id 的列表）
+      conversation_type: conversationType,  // 会话类型（'single' 单聊, 'group' 群聊）
       title: title
     });
     return response.data;
@@ -177,16 +177,16 @@ export const createConversation = async (userId, participantId, participantType 
   }
 };
 
-// 创建消息记录
-export const createMessage = async (conversationId, senderId, receiverId, content, messageType = 'text', attachmentUrl = null) => {
+// 创建消息记录（新表结构：移除receiver_id，添加sender_type）
+export const createMessage = async (conversationId, senderId, content, messageType = 'text', attachmentUrl = null, senderType = 'user') => {
   try {
     const response = await api.post('/messages', {
       conversation_id: conversationId,
       sender_id: senderId,
-      receiver_id: receiverId,
       content: content,
       message_type: messageType,
-      attachment_url: attachmentUrl
+      attachment_url: attachmentUrl,
+      sender_type: senderType  // 'user' 真实用户, 'ai' AI用户
     });
     return response.data;
   } catch (error) {
@@ -196,9 +196,16 @@ export const createMessage = async (conversationId, senderId, receiverId, conten
 };
 
 // 信息采集过程中的LLM调用（不依赖role和system_prompt）
-export const sendInfoCollectionLLM = async (query, load_id) => {
+export const sendInfoCollectionLLM = async (query, load_id, conversation_id) => {
   try {
-    const response = await api.post('/info-collection/llm', { query, load_id });
+    if (!conversation_id) {
+      throw new Error('conversation_id is required');
+    }
+    const response = await api.post('/info-collection/llm', { 
+      query, 
+      load_id, 
+      conversation_id 
+    });
     return response.data;
   } catch (error) {
     console.error('Info collection LLM error:', error);
@@ -290,7 +297,8 @@ export const generateSystemPrompt = async () => {
 
 export const updateRoleName = async (userId, name) => {
   try {
-    const response = await api.put(`/roles/${userId}`, { name });
+    // 使用 /roles/uuid/{uuid} 端点，因为 userId 是 loads.id (UUID)
+    const response = await api.put(`/roles/uuid/${userId}`, { name });
     return response.data;
   } catch (error) {
     console.error('Update role name error:', error);
@@ -330,7 +338,7 @@ export const storeStatusBioContentThirdView = async (content_third_view) => {
 
 export const getRoleByUuid = async (userId) => {
   try {
-    const response = await api.get(`/roles/${userId}`);
+    const response = await api.get(`/roles/by-uuid/${userId}`);
     return response.data;
   } catch (error) {
     console.error('Get role by uuid error:', error);

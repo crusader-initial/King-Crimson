@@ -170,16 +170,16 @@ def generate_system_prompt(
         logger.error("生成system_prompt失败!", exc_info=True)
         return APIResponse.error(code=500, message="Internal server error")
 
-@router.get("/roles/{uuid}")
+@router.get("/roles/by-uuid/{uuid}")
 def get_role_by_uuid(
     uuid: str,
     db: Session = Depends(get_db)
 ):
     """
-    根据UUID获取角色信息
+    根据用户UUID（loads.id）获取角色信息
     
     Args:
-        uuid: 角色UUID（对应loads.id）
+        uuid: 用户UUID（loads.id，对应 roles.uuid）
     """
     try:
         role, error, status_code = RoleService.get_role_by_uuid(
@@ -198,14 +198,46 @@ def get_role_by_uuid(
         logger.error("获取角色信息失败!", exc_info=True)
         return APIResponse.error(code=500, message="Internal server error")
 
-@router.put("/roles/{uuid}")
-def update_role(
+@router.get("/roles/{role_id}")
+def get_role_by_id(
+    role_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    根据角色ID获取角色信息
+    
+    Args:
+        role_id: 角色ID（roles.id）
+    """
+    try:
+        role, error, status_code = RoleService.get_role_by_id(
+            db=db,
+            role_id=role_id
+        )
+        
+        if error:
+            return APIResponse.error(code=status_code, message=error)
+        
+        return APIResponse.success(
+            data=role.to_dict(),
+            message="获取角色信息成功"
+        )
+    except Exception as e:
+        logger.error("获取角色信息失败!", exc_info=True)
+        return APIResponse.error(code=500, message="Internal server error")
+
+@router.put("/roles/uuid/{uuid}")
+def update_role_by_uuid(
     uuid: str,
     request: UpdateRoleRequest,
     db: Session = Depends(get_db)
 ):
     """
-    根据UUID更新角色信息（支持更新整条记录，只设置需要更新的字段）
+    根据用户UUID更新角色信息（支持更新整条记录，只设置需要更新的字段）
+    如果角色不存在，则创建新角色（用于输入昵称时创建role记录）
+    
+    Args:
+        uuid: 用户UUID（loads.id，对应 roles.uuid）
     
     请求体示例:
     {
@@ -216,7 +248,7 @@ def update_role(
     }
     """
     try:
-        success, error = RoleService.update_role_by_uuid(
+        success, error, updated_role_id = RoleService.update_role_by_uuid(
             db=db,
             uuid=uuid,
             name=request.name,
@@ -229,7 +261,64 @@ def update_role(
         )
         if not success:
             return APIResponse.error(code=400, message=error)
-        return APIResponse.success(message="角色信息更新成功")
+        
+        # 返回角色ID
+        response_data = {}
+        if updated_role_id:
+            response_data["role_id"] = updated_role_id
+        
+        return APIResponse.success(
+            data=response_data,
+            message="角色信息更新成功"
+        )
+    except Exception as e:
+        logger.error("更新角色信息失败!", exc_info=True)
+        return APIResponse.error(code=500, message="Internal server error")
+
+@router.put("/roles/{role_id}")
+def update_role(
+    role_id: str,
+    request: UpdateRoleRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    根据角色ID更新角色信息（支持更新整条记录，只设置需要更新的字段）
+    
+    Args:
+        role_id: 角色ID（roles.id）
+    
+    请求体示例:
+    {
+        "name": "新角色名称",
+        "description": "新描述",
+        "system_prompt": "新系统提示词"
+        // 其他字段可选
+    }
+    """
+    try:
+        success, error, updated_role_id = RoleService.update_role_by_id(
+            db=db,
+            role_id=role_id,
+            name=request.name,
+            description=request.description,
+            system_prompt=request.system_prompt,
+            icon=request.icon,
+            is_active=request.is_active,
+            enable_l0_retrieval=request.enable_l0_retrieval,
+            enable_l1_retrieval=request.enable_l1_retrieval
+        )
+        if not success:
+            return APIResponse.error(code=400, message=error)
+        
+        # 返回角色ID
+        response_data = {}
+        if updated_role_id:
+            response_data["role_id"] = updated_role_id
+        
+        return APIResponse.success(
+            data=response_data,
+            message="角色信息更新成功"
+        )
     except Exception as e:
         logger.error("更新角色信息失败!", exc_info=True)
         return APIResponse.error(code=500, message="Internal server error")
@@ -255,7 +344,7 @@ def submit_info_collection(
         if not load_id:
             return APIResponse.error(code=400, message="缺少用户ID（X-User-ID请求头）")
         
-        success, error = RoleService.submit_info_collection(
+        success, error, role_id = RoleService.submit_info_collection(
             db=db,
             uuid=load_id,
             description=request.description,
@@ -265,7 +354,16 @@ def submit_info_collection(
         )
         if not success:
             return APIResponse.error(code=400, message=error)
-        return APIResponse.success(message="信息采集数据提交成功")
+        
+        # 返回角色ID
+        response_data = {}
+        if role_id:
+            response_data["role_id"] = role_id
+        
+        return APIResponse.success(
+            data=response_data,
+            message="信息采集数据提交成功"
+        )
     except Exception as e:
         logger.error("提交信息采集数据失败!", exc_info=True)
         return APIResponse.error(code=500, message="Internal server error")
@@ -281,10 +379,9 @@ def create_conversation(
     
     请求体示例:
     {
-        "user_id": "用户ID（loads.id）",
-        "participant_id": "参与者ID（roles.id）",
-        "participant_type": "role",
-        "title": "信息采集对话"  // 可选
+        "participant_ids": ["用户ID（loads.id）", "角色ID（roles.id）"],  // 参与者ID列表
+        "conversation_type": "single",  // 会话类型：'single' 单聊, 'group' 群聊
+        "title": "信息采集对话"  // 可选，会话标题
     }
     """
     try:
@@ -292,20 +389,26 @@ def create_conversation(
         from app.services.conversation_service import ConversationService
         conversation, error, status = ConversationService.get_or_create_conversation(
             db=db,
-            user_id=request.user_id,
-            participant_id=request.participant_id,
-            participant_type=request.participant_type,
+            participant_ids=request.participant_ids,
+            conversation_type=request.conversation_type,
             title=request.title
         )
         
         if error:
             return APIResponse.error(code=status, message=error)
         
+        # 获取参与者列表
+        from app.models.conversation import ConversationParticipant
+        participants = db.query(ConversationParticipant).filter(
+            ConversationParticipant.conversation_id == conversation.id
+        ).all()
+        
         return APIResponse.success(
             data={
                 "conversation_id": str(conversation.id),
-                "user_id": str(conversation.user_id),
-                "participant_id": str(conversation.participant_id)
+                "conversation_type": conversation.conversation_type,
+                "title": conversation.title,
+                "participants": [str(p.user_id) for p in participants]
             },
             message="会话创建成功"
         )
@@ -326,10 +429,10 @@ def create_message(
     {
         "conversation_id": "会话ID",
         "sender_id": "发送者ID（user_id 或 role_id）",
-        "receiver_id": "接收者ID（user_id 或 role_id）",
         "content": "消息内容",
         "message_type": "text",  // 可选，默认 'text'
-        "attachment_url": null  // 可选
+        "attachment_url": null,  // 可选
+        "sender_type": "user"  // 可选，'user' 真实用户, 'ai' AI用户，默认 'user'
     }
     """
     try:
@@ -338,10 +441,10 @@ def create_message(
             db=db,
             conversation_id=request.conversation_id,
             sender_id=request.sender_id,
-            receiver_id=request.receiver_id,
             content=request.content,
             message_type=request.message_type,
-            attachment_url=request.attachment_url
+            attachment_url=request.attachment_url,
+            sender_type=request.sender_type
         )
         
         if error:
@@ -352,8 +455,9 @@ def create_message(
                 "message_id": str(message.id),
                 "conversation_id": str(message.conversation_id),
                 "sender_id": str(message.sender_id),
-                "receiver_id": str(message.receiver_id),
                 "content": message.content,
+                "message_type": message.message_type,
+                "sender_type": message.sender_type,
                 "created_at": message.created_at.isoformat() if message.created_at else None
             },
             message="消息创建成功"
@@ -399,10 +503,10 @@ def get_messages_by_conversation(
                 "id": str(msg.id),
                 "conversation_id": str(msg.conversation_id),
                 "sender_id": str(msg.sender_id),
-                "receiver_id": str(msg.receiver_id),
                 "content": msg.content,
                 "message_type": msg.message_type,
                 "attachment_url": msg.attachment_url,
+                "sender_type": msg.sender_type,
                 "created_at": msg.created_at.isoformat() if msg.created_at else None
             })
         
@@ -446,20 +550,34 @@ def get_conversations(
             return APIResponse.error(code=status, message=error)
         
         # 转换为字典格式
+        from app.models.conversation import ConversationParticipant, Message
+        
         conversations_data = []
         for conv in conversations_list:
+            # 获取会话的参与者列表
+            participants = db.query(ConversationParticipant).filter(
+                ConversationParticipant.conversation_id == conv.id
+            ).all()
+            
+            # 获取其他参与者（除了当前用户）
+            other_participants = [p.user_id for p in participants if p.user_id != user_id]
+            
+            # 获取最后一条消息
+            last_message = db.query(Message).filter(
+                Message.conversation_id == conv.id
+            ).order_by(Message.created_at.desc()).first()
+            
             conversations_data.append({
                 "id": str(conv.id),
-                "user_id": str(conv.user_id),
-                "participant_id": str(conv.participant_id),
-                "participant_type": conv.participant_type,
+                "conversation_type": conv.conversation_type,
                 "title": conv.title,
-                "last_message_at": conv.last_message_at.isoformat() if conv.last_message_at else None,
-                "last_message_content": conv.last_message_content,
-                "unread_count": conv.unread_count or 0,
-                "is_pinned": conv.is_pinned,
-                "is_muted": conv.is_muted,
-                "created_at": conv.created_at.isoformat() if conv.created_at else None
+                "participants": [str(p.user_id) for p in participants],
+                "other_participants": other_participants,
+                "last_message_at": last_message.created_at.isoformat() if last_message else None,
+                "last_message_content": last_message.content if last_message else None,
+                "unread_count": 0,  # 未读消息功能已移除
+                "created_at": conv.created_at.isoformat() if conv.created_at else None,
+                "updated_at": conv.updated_at.isoformat() if conv.updated_at else None
             })
         
         return APIResponse.success(
@@ -494,21 +612,18 @@ def info_collection_llm(
             logger.warning(f"未找到对应的角色（load_id: {load_id}），继续执行LLM调用但不记录消息")
             role = None
         
-        # 2. 获取或创建会话（用户与角色的对话）
+        # 2. 获取会话（会话ID必传）
         conversation = None
         if role:
             from app.services.conversation_service import ConversationService
-            conversation, error, status = ConversationService.get_or_create_conversation(
+            # 使用传入的conversation_id获取会话
+            conversation, error, status = ConversationService.get_conversation_by_id(
                 db=db,
-                user_id=load_id,  # 用户ID（loads.id）
-                participant_id=role.id,  # 角色ID（roles.id）
-                participant_type='role',
-                title="信息采集对话"
+                conversation_id=request.conversation_id
             )
-            
             if error:
-                logger.warning(f"创建会话失败: {error}，继续执行LLM调用")
-                conversation = None
+                logger.error(f"获取会话失败: {error}，会话ID: {request.conversation_id}")
+                return APIResponse.error(code=status, message=f"获取会话失败: {error}")
         
         # 3. 保存用户消息（只有当不是生成问题的指令时才保存）
         # 判断是否为生成问题的指令：以"请根据之前的对话内容"开头
@@ -520,9 +635,9 @@ def info_collection_llm(
                 db=db,
                 conversation_id=str(conversation.id),  # 转换为字符串
                 sender_id=str(load_id),  # 用户ID，确保是字符串
-                receiver_id=str(role.id),  # 角色ID，转换为字符串
                 content=request.query,
-                message_type='text'
+                message_type='text',
+                sender_type='user'
             )
             if msg_error:
                 logger.warning(f"保存用户消息失败: {msg_error}")
@@ -620,13 +735,14 @@ def info_collection_llm(
                 db=db,
                 conversation_id=str(conversation.id),  # 转换为字符串
                 sender_id=str(role.id),  # 角色ID（AI回复），转换为字符串
-                receiver_id=str(load_id),  # 用户ID，确保是字符串
                 content=answer,
-                message_type='text'
+                message_type='text',
+                sender_type='ai'
             )
             if msg_error:
                 logger.warning(f"保存AI消息失败: {msg_error}")
         
+        # 返回答案
         return APIResponse.success(
             data={"answer": answer},
             message="LLM调用成功"

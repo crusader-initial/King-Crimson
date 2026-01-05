@@ -52,9 +52,12 @@ cp .env.example .env
 
 ### 3. 数据库迁移
 
-确保 PostgreSQL 数据库已安装 pgvector 扩展，然后执行以下 SQL 脚本创建向量表：
+确保 PostgreSQL 数据库已安装 pgvector 扩展，然后执行以下 SQL 脚本：
 
 ```bash
+# 重建会话和消息表结构（删除旧表并创建新表）
+psql -U postgres -d second_me_lite -f migrations/rebuild_conversation_tables.sql
+
 # 创建文档级别的向量表
 psql -U postgres -d second_me_lite -f migrations/create_document_embedding_table.sql
 
@@ -63,10 +66,15 @@ psql -U postgres -d second_me_lite -f migrations/create_chunk_embedding_table.sq
 ```
 
 或者直接在 PostgreSQL 客户端中执行以下迁移文件中的 SQL 语句：
+- `migrations/rebuild_conversation_tables.sql` - **重要**：重建会话和消息表结构（会删除旧表数据）
 - `migrations/create_document_embedding_table.sql` - 文档级别的向量表
 - `migrations/create_chunk_embedding_table.sql` - chunk 级别的向量表
 
 **注意**: 
+- **会话和消息表结构已更新**：新的表结构包括：
+  - `conversations` - 会话表（支持单聊和群聊）
+  - `conversation_participants` - 会话参与者表（记录每个会话的参与者）
+  - `messages` - 消息表（增加了 `sender_type` 字段区分用户和AI）
 - 文档向量表 (`document_embedding`) 用于存储文档级别的嵌入向量
 - Chunk 向量表 (`chunk_embedding`) 用于存储 chunk 级别的嵌入向量
 - 两者都使用 HuggingFace BAAI/bge-m3 模型生成，向量维度为 1024
@@ -98,24 +106,67 @@ python run.py
     *   请求: `multipart/form-data`，字段 `file`（文件）和可选的 `metadata`（JSON 字符串）
     *   响应: 返回文档信息和处理结果
     
-*   **POST /api/file/export-messages**: 将消息导出为文档并上传
-    *   功能: 根据 `load_id` 或 `role_id` 获取所有相关的消息，组合成文档后走上传逻辑
+*   **POST /api/file/export-messages**: 将消息导出为文档并执行完整的处理流程
+    *   功能: 根据 `load_id` 获取用户参与的所有单聊会话，为每个会话创建单独的文档，然后依次执行完整的处理流程：
+        1. 将聊天记录消息转换为文档并落表
+        2. 文件内容分析（生成 insight 和 summary）
+        3. 文档内容分块（将文档分割成 chunks）
+        4. 文档分块向量化（为每个 chunk 生成嵌入向量）
+        5. 文档向量化（为文档生成文档级嵌入向量）
+        6. 身份传记数据生成（生成状态传记）
+        7. L1层数据生成（生成全局传记和 L1 数据）
     *   请求体: JSON 格式
         ```json
         {
-            "load_id": "user-uuid",  // 或
-            "role_id": "role-uuid",  // 与 load_id 二选一
-            "title": "聊天记录导出",  // 可选，文档标题
+            "load_id": "user-uuid",  // 必填，用户ID（loads.id）
+            "title": "聊天记录导出",  // 可选，文档标题前缀
             "description": "从消息导出的文档"  // 可选，文档描述
         }
         ```
-    *   响应: 返回文档信息和处理结果（与文件上传接口相同）
+    *   响应: 返回创建的文档列表、处理结果统计以及生成的数据
+        ```json
+        {
+            "success": true,
+            "message": "导出完成: 创建 N 个文档，成功处理 M 个，失败 K 个，身份传记生成成功，L1数据生成成功（版本: V）",
+            "data": {
+                "created_count": N,
+                "processed_documents": [
+                    {
+                        "document_id": "文档ID",
+                        "filename": "文件名",
+                        "participant_name": "参与者名称"
+                    }
+                ],
+                "failed_documents": [
+                    {
+                        "document_id": "文档ID",
+                        "step": 2,  // 失败的步骤编号（可选）
+                        "error": "错误信息"
+                    }
+                ],
+                "status_bio": {
+                    "content": "状态传记内容（第二视角）",
+                    "content_third_view": "状态传记内容（第三视角）",
+                    "summary": "状态传记摘要（第二视角）",
+                    "summary_third_view": "状态传记摘要（第三视角）"
+                },
+                "l1_data": {
+                    "version": "版本号",
+                    "data": { /* L1数据对象 */ }
+                },
+                "role_id": "角色ID"
+            }
+        }
+        ```
     *   说明:
-        - `load_id` 和 `role_id` 必须提供其中一个，不能同时提供
-        - 如果提供 `load_id`，会获取该用户的所有会话和消息
-        - 如果提供 `role_id`，会获取该角色相关的所有会话和消息
-        - 消息会按时间顺序格式化，包含发送者、时间戳和内容
-        - 生成的文档会自动调用文档上传逻辑，保存到数据库并关联到对应的角色
+        - `load_id` 是必填字段，用于标识要导出消息的用户
+        - 系统会查找该用户参与的所有单聊会话（`conversation_type='single'`）
+        - 为每个单聊会话创建一个单独的文档，包含该会话的最近10条消息
+        - 消息会按时间顺序格式化，包含发送者名称和内容
+        - 生成的文档会自动执行完整的处理流程（分析、分块、向量化等）
+        - 步骤6和7只需要执行一次（使用 role_id），而不是对每个文档执行
+        - 文档标题格式: `{title}_{参与者名称}_{日期}`，文件名格式: `{title}_{参与者名称}_{时间戳}.txt`
+        - 如果某个步骤失败，会在 `failed_documents` 中记录失败信息，但不会中断整个流程
     
 *   **DELETE /api/file/{filename}**: 文件删除接口
     *   功能: 删除文件记录、相关 chunks、向量数据以及物理文件
@@ -178,6 +229,45 @@ python run.py
         }
         ```
     *   响应: 返回更新结果
+
+#### 角色管理接口
+
+*   **GET /api/roles/{role_id}**: 根据角色ID获取角色信息
+    *   功能: 根据角色ID获取角色详细信息
+    *   参数: `role_id`（角色ID，即 `roles.id`）
+    *   响应: 返回角色详细信息，包括：
+        - `id`: 角色ID（roles.id）
+        - `uuid`: 用户ID（roles.uuid，对应 loads.id）
+        - `name`: 角色名称
+        - `description`: 角色描述
+        - `system_prompt`: 系统提示词
+        - `icon`: 图标
+        - `is_active`: 是否激活
+        - `enable_l0_retrieval`: 是否启用L0检索
+        - `enable_l1_retrieval`: 是否启用L1检索
+        - `create_time`: 创建时间
+        - `update_time`: 更新时间
+    
+*   **PUT /api/roles/{role_id}**: 根据角色ID更新角色信息
+    *   功能: 根据角色ID更新角色信息（支持部分更新）
+    *   参数: `role_id`（角色ID，即 `roles.id`）
+    *   请求体: JSON 格式，所有字段可选
+        ```json
+        {
+            "name": "新角色名称",
+            "description": "新描述",
+            "system_prompt": "新系统提示词",
+            "icon": "图标URL",
+            "is_active": true,
+            "enable_l0_retrieval": true,
+            "enable_l1_retrieval": true
+        }
+        ```
+    *   响应: 返回更新结果，包含 `role_id` 字段
+    *   说明:
+        - `role_id` 是 `roles.id`（独立的UUID），不是 `roles.uuid`
+        - 所有字段都是可选的，只更新提供的字段
+        - 更新 `name` 时会自动创建 l1_versions 和 l1_bios 的初始记录（如果不存在）
 
 #### 状态传记接口
 
@@ -255,7 +345,7 @@ python run.py
             "metadata": {
                 "enable_l0_retrieval": true,
                 "enable_l1_retrieval": false,
-                "role_id": "uuid-string"
+                "role_id": "角色ID（roles.id）"
             },
             "stream": false,
             "model": "gpt-3.5-turbo",
@@ -266,7 +356,7 @@ python run.py
     *   请求参数说明:
         - `messages`: List[Dict[str, str]]，标准的 OpenAI 消息列表（必需）
         - `metadata`: Dict[str, Any]（必需），额外参数：
-            - `role_id`: str，角色 UUID（必需，用于系统定制）
+            - `role_id`: str，角色ID（必需，即 `roles.id`，用于系统定制）
             - `enable_l0_retrieval`: bool，是否启用知识检索（可选）
             - `enable_l1_retrieval`: bool，是否启用高级知识检索（可选）
         - `stream`: bool，是否流式响应（默认: True，支持流式和非流式两种模式）
