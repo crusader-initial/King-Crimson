@@ -36,6 +36,7 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = str(_env_file)  # 使用绝对路径指向项目根目录的 .env 文件
+        env_file_encoding = 'utf-8'  # 明确指定 UTF-8 编码
 
 settings = Settings()
 
