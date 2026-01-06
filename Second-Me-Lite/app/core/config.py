@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 from pathlib import Path
+from typing import Optional
 
 # 获取项目根目录（Second-Me-Lite/）
 # 当前文件在 app/core/config.py，所以需要向上两级
@@ -25,9 +26,21 @@ class Settings(BaseSettings):
     OPENAI_BASE_URL: str
     CHAT_MODEL: str
 
-    # Embedding 配置（使用 HuggingFace BAAI/bge-m3 本地模型）
-    EMBEDDING_DIMENSION: int = 1024  # bge-m3 的维度，可通过 .env 覆盖
-    EMBEDDING_MODEL: str = "BAAI/bge-m3"  # HuggingFace 模型名称，可通过 .env 覆盖
+    # Embedding 配置
+    EMBEDDING_PROVIDER: str = "local"  # "local" (HuggingFace) or "openai" (OpenAI Compatible)
+    
+    # Local Embedding (HuggingFace)
+    EMBEDDING_DIMENSION: int = 1024  # bge-m3 的维度
+    EMBEDDING_MODEL: str = "BAAI/bge-m3"  # HuggingFace 模型名称
+    
+    # OpenAI / SiliconFlow Embedding Config
+    OPENAI_EMBEDDING_MODEL: str = "BAAI/bge-m3"  # 硅基流动支持 BAAI/bge-m3
+    OPENAI_EMBEDDING_DIMENSIONS: int = 1024
+    
+    # 独立的 Embedding API 配置 (可选)
+    # 如果不设置，默认使用 CHAT_API_KEY 和 OPENAI_BASE_URL
+    EMBEDDING_API_KEY: Optional[str] = None
+    EMBEDDING_BASE_URL: Optional[str] = None
 
     # Document Chunking 配置
     DOCUMENT_CHUNK_SIZE: int = 500  # 文档分块大小，可通过 .env 覆盖
