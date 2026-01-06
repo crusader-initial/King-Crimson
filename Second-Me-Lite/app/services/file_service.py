@@ -52,7 +52,7 @@ class FileService:
         db: Session, 
         file: UploadFile, 
         metadata: Optional[Dict[str, Any]] = None,
-        role_id: Optional[str] = None  # 角色ID（字符串格式，需要转换为 Integer）
+        role_id: Optional[str] = None  # 角色ID（字符串格式，varchar(64)类型）
     ) -> Dict[str, Any]:
         """
         上传文件并处理
@@ -148,6 +148,8 @@ class FileService:
             db.flush()  # 刷新以获取 document.id，但不提交事务
             
             # 再创建 Memory 记录（使用 document.id）
+            # document_id 需要转换为字符串（数据库中是 varchar(64)）
+            document_id_str = str(document.id) if document.id else None
             memory = Memory(
                 role_id=role_id,
                 name=filename,
@@ -155,7 +157,7 @@ class FileService:
                 type=self._get_file_type(filename),
                 path=str(filepath),
                 meta_data=json.dumps(metadata, ensure_ascii=False) if metadata else None,
-                document_id=document.id,
+                document_id=document_id_str,
                 status='active'
             )
             db.add(memory)
@@ -255,13 +257,21 @@ class FileService:
             
             # 2. 删除相关的 chunks
             if document_id:
-                chunks = db.query(Chunk).filter(Chunk.document_id == document_id).all()
-                for chunk in chunks:
-                    db.delete(chunk)
-                logger.info(f"已删除 {len(chunks)} 个 chunks")
+                # document_id 是字符串类型，需要转换为整数用于查询 Chunk 和 Document
+                try:
+                    document_id_int = int(document_id)
+                except (ValueError, TypeError):
+                    logger.warning(f"无法将 document_id 转换为整数: {document_id}")
+                    document_id_int = None
                 
-                # 3. 删除 Document 记录
-                document = db.query(Document).filter(Document.id == document_id).first()
+                if document_id_int:
+                    chunks = db.query(Chunk).filter(Chunk.document_id == document_id_int).all()
+                    for chunk in chunks:
+                        db.delete(chunk)
+                    logger.info(f"已删除 {len(chunks)} 个 chunks")
+                    
+                    # 3. 删除 Document 记录
+                    document = db.query(Document).filter(Document.id == document_id_int).first()
                 if document:
                     db.delete(document)
                     logger.info(f"已删除 Document 记录: {document_id}")
@@ -414,7 +424,12 @@ class FileService:
                 raise HTTPException(status_code=400, detail="load_id 必须提供")
             
             # 2. 根据 load_id 获取用户信息
-            load = db.query(Load).filter(Load.id == load_id).first()
+            # Load.id 是 BigInteger，需要将 load_id 转换为整数
+            try:
+                load_id_int = int(load_id) if isinstance(load_id, str) and load_id.isdigit() else load_id
+            except (ValueError, AttributeError):
+                load_id_int = load_id
+            load = db.query(Load).filter(Load.id == load_id_int).first()
             if not load:
                 raise HTTPException(status_code=404, detail=f"未找到用户 ID: {load_id}")
             
@@ -422,14 +437,18 @@ class FileService:
             
             # 3. 获取该用户对应的角色（用于文档上传）
             role_id = None
-            role = db.query(Role).filter(Role.load_id == load_id_int).first()
+            # 将 load_id 转换为字符串（数据库 load_id 是 varchar 类型）
+            load_id_str = str(load_id) if not isinstance(load_id, str) else load_id
+            role = db.query(Role).filter(Role.load_id == load_id_str).first()
             if role:
-                role_id = role.id
+                # role_id 需要转换为字符串（Memory.role_id 是 varchar(64)类型）
+                role_id = str(role.id)
             
             # 4. 查询用户参与的所有单聊会话
             # 获取用户参与的所有会话
+            # user_id 是字符串类型（varchar），需要转换为字符串
             participant_records = db.query(ConversationParticipant).filter(
-                ConversationParticipant.user_id == load_id_int
+                ConversationParticipant.user_id == load_id_str
             ).all()
             
             if not participant_records:
@@ -452,9 +471,10 @@ class FileService:
             for conversation in conversations:
                 try:
                     # 5.1 获取该会话的另一个参与者
+                    conversation_id_str = str(conversation.id)
                     other_participants = db.query(ConversationParticipant).filter(
-                        ConversationParticipant.conversation_id == conversation.id,
-                        ConversationParticipant.user_id != load_id_int
+                        ConversationParticipant.conversation_id == conversation_id_str,
+                        ConversationParticipant.user_id != load_id_str
                     ).all()
                     
                     if not other_participants:
@@ -493,9 +513,10 @@ class FileService:
                         continue
                     
                     # 5.3 查询该会话的最近10条消息（按时间降序取前10，然后按时间正序排列）
+                    conversation_id_str = str(conversation.id)
                     recent_messages = db.query(Message).filter(
-                        Message.conversation_id == conversation.id
-                    ).order_by(Message.created_at.desc()).limit(10).all()
+                        Message.conversation_id == conversation_id_str
+                    ).order_by(Message.create_time.desc()).limit(10).all()
                     
                     # 反转列表，使消息按时间正序排列
                     recent_messages = list(reversed(recent_messages))
@@ -506,16 +527,16 @@ class FileService:
                     
                     # 5.4 构建文档内容
                     # 获取第一条消息的日期
-                    first_message_date = recent_messages[0].created_at
+                    first_message_date = recent_messages[0].create_time
                     date_str = first_message_date.strftime('%Y-%m-%d') if first_message_date else "未知日期"
                     
                     # 构建消息列表（类似chat接口的messages格式，但用用户名称替换role）
                     messages_list = []
-                    # 确保 load_id 是整数类型
-                    load_id_int = int(load_id) if not isinstance(load_id, int) else load_id
+                    # sender_id 是字符串类型，需要转换为字符串进行比较
+                    load_id_str = str(load_id) if not isinstance(load_id, str) else load_id
                     for msg in recent_messages:
                         # 判断发送者是当前用户还是另一个参与者
-                        if msg.sender_id == load_id_int:
+                        if msg.sender_id == load_id_str:
                             sender_name = user_name
                         else:
                             sender_name = other_participant_name

@@ -62,6 +62,19 @@ sdk.dir=D\:\\Users\\你的用户名\\AppData\\Local\\Android\\Sdk
 - Windows: `%LOCALAPPDATA%\Android\Sdk`
 - macOS/Linux: `~/Library/Android/sdk` 或 `$HOME/Android/Sdk`
 
+**Java 配置：**
+
+项目需要 Java 17 来构建 Android 应用。Gradle 会自动从系统的 `JAVA_HOME` 环境变量中检测 Java 安装路径。
+
+如果遇到 "Java home supplied is invalid" 错误：
+1. 确保已安装 Java 17（推荐使用 Oracle JDK 或 OpenJDK）
+2. 设置 `JAVA_HOME` 环境变量指向 Java 安装目录
+   - Windows: 例如 `C:\Program Files\Java\jdk-17`
+   - macOS: 例如 `/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home`
+   - Linux: 例如 `/usr/lib/jvm/java-17-openjdk`
+3. 验证 Java 版本：运行 `java -version` 应显示 Java 17
+4. 如果 `android/gradle.properties` 中有硬编码的 `org.gradle.java.home` 路径，请注释掉该行以使用系统环境变量
+
 **常见问题：**
 
 如果遇到 "SDK location not found" 错误，请检查：
@@ -95,6 +108,7 @@ sdk.dir=D\:\\Users\\你的用户名\\AppData\\Local\\Android\\Sdk
 3. **信息采集**: 与AI对话，采集用户信息来塑造"第二自我"
    - 支持文本输入和语音输入（语音功能待实现）
    - 右上角有"跳过"按钮，可跳过信息采集直接进入主界面
+   - 信息采集完成后，点击"下一步"时会自动调用消息导出接口，将聊天记录导出为文档并执行完整的处理流程
 4. **主界面**: 包含两个功能块
    - **上传文件**: 导入角色知识库
    - **聊天窗**: 与AI角色对话

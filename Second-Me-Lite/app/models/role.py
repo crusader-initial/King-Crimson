@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, BigInteger, String, Text, Boolean, DateTime, ForeignKey
 from datetime import datetime
 from app.core.database import Base
 
@@ -7,17 +7,17 @@ class Role(Base):
     """角色表（roles）"""
     __tablename__ = "roles"
     
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)  # 角色独立ID，自增整数
-    load_id = Column(Integer, ForeignKey('loads.id', ondelete='CASCADE'), nullable=False, unique=True)  # 用户ID，关联到 loads.id，用于关联用户
+    id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)  # 自增主键 (bigserial)
+    load_id = Column(String(64), ForeignKey('loads.id', ondelete='CASCADE'), nullable=False, unique=True)  # 用户ID，关联到 loads.id（varchar类型）
     name = Column(String(100), nullable=False)  # 角色名称，允许重复
     description = Column(String(500), nullable=True)
-    system_prompt = Column(Text, nullable=False)
+    system_prompt = Column(String(6000), nullable=False)  # varchar(6000)
     icon = Column(String(100), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
-    enable_l0_retrieval = Column(Boolean, default=True, nullable=False)
+    enable_l0_retrieval = Column(Boolean, default=False, nullable=False)  # 默认值为 false
     enable_l1_retrieval = Column(Boolean, default=True, nullable=False)
-    create_time = Column(DateTime, default=datetime.utcnow, nullable=False)
-    update_time = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    create_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    update_time = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     def to_dict(self):
         """转换为字典格式"""

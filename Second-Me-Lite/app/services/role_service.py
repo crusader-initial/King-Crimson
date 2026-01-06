@@ -49,7 +49,7 @@ class RoleService:
         
         Args:
             db: 数据库会话
-            user_uuid: 用户ID（loads.id，整数），将存储到 roles.load_id 用于关联用户
+            user_uuid: 用户ID（loads.id，整数或字符串），将存储到 roles.load_id 用于关联用户（存储为字符串）
             name: 角色名称（必填）
             description: 描述（可选）
             system_prompt: 系统提示词（必填，默认空字符串，如果为空且load_name存在则自动生成）
@@ -66,7 +66,7 @@ class RoleService:
             
         注意：
             - roles.id 是独立的UUID，自动生成
-            - roles.load_id 存储传入的 loads.id（整数），用于关联用户
+            - roles.load_id 存储传入的 loads.id（字符串类型，varchar(64)），用于关联用户
         """
         try:
             # 验证必填字段
@@ -74,16 +74,16 @@ class RoleService:
                 return None, "用户ID不能为空", 400
             
             
-            # 将 user_uuid 转换为整数
+            # 将 user_uuid 转换为字符串（数据库 load_id 是 varchar 类型）
             try:
-                load_id_int = int(user_uuid) if not isinstance(user_uuid, int) else user_uuid
+                load_id_str = str(user_uuid) if not isinstance(user_uuid, str) else user_uuid
             except (ValueError, TypeError):
                 return None, f"无效的用户ID格式: {user_uuid}", 400
             
             # 检查用户ID是否已存在角色
-            existing_role = db.query(Role).filter(Role.load_id == load_id_int).first()
+            existing_role = db.query(Role).filter(Role.load_id == load_id_str).first()
             if existing_role:
-                logger.info(f"角色已存在，用户ID: {load_id_int}")
+                logger.info(f"角色已存在，用户ID: {load_id_str}")
                 return existing_role, None, 200
             
             # 如果 system_prompt 为空且 load_name 存在，生成默认的 system_prompt
@@ -100,16 +100,16 @@ class RoleService:
             
             # 创建新角色
             # roles.id 是自增整数，由数据库自动生成
-            # roles.load_id 用于关联 loads.id（用户ID，整数）
-            # 将 user_uuid 转换为整数（如果是字符串）
+            # roles.load_id 用于关联 loads.id（用户ID，字符串类型）
+            # 将 user_uuid 转换为字符串（数据库 load_id 是 varchar 类型）
             try:
-                load_id_int = int(user_uuid.strip()) if isinstance(user_uuid, str) else user_uuid
+                load_id_str = str(user_uuid).strip() if isinstance(user_uuid, str) else str(user_uuid)
             except (ValueError, AttributeError):
                 return None, f"无效的用户ID格式: {user_uuid}", 400
             
             new_role = Role(
                 # id 由数据库自动生成（自增整数）
-                load_id=load_id_int,  # load_id 存储 loads.id（整数），用于关联用户
+                load_id=load_id_str,  # load_id 存储 loads.id（字符串），用于关联用户
                 name=name.strip(),
                 description=description.strip() if description else None,
                 system_prompt=final_system_prompt,
@@ -166,13 +166,15 @@ class RoleService:
         
         Args:
             db: 数据库会话
-            uuid: 用户ID（loads.id，整数，对应 roles.load_id）
+            uuid: 用户ID（loads.id，整数或字符串，对应 roles.load_id，存储为字符串）
             
         Returns:
             Tuple[Role对象, 错误消息, HTTP状态码]
         """
         try:
-            role = db.query(Role).filter(Role.load_id == uuid).first()
+            # 将 uuid 转换为字符串（数据库 load_id 是 varchar 类型）
+            load_id_str = str(uuid) if not isinstance(uuid, str) else uuid
+            role = db.query(Role).filter(Role.load_id == load_id_str).first()
             
             if not role:
                 return None, f"未找到UUID为 {uuid} 的角色", 404
@@ -289,7 +291,7 @@ class RoleService:
         
         Args:
             db: 数据库会话
-            uuid: 用户ID（loads.id，整数，对应 roles.load_id）
+            uuid: 用户ID（loads.id，整数或字符串，对应 roles.load_id，存储为字符串）
             name: 角色名称（可选，创建时必填）
             description: 描述（可选）
             system_prompt: 系统提示词（可选）
@@ -302,9 +304,9 @@ class RoleService:
             Tuple[是否成功, 错误信息, 角色ID]
         """
         try:
-            # 确保 uuid 是整数类型
-            load_id_int = int(uuid) if not isinstance(uuid, int) else uuid
-            role = db.query(Role).filter(Role.load_id == load_id_int).first()
+            # 将 uuid 转换为字符串（数据库 load_id 是 varchar 类型）
+            load_id_str = str(uuid) if not isinstance(uuid, str) else uuid
+            role = db.query(Role).filter(Role.load_id == load_id_str).first()
             
             # 如果角色不存在，创建新角色
             if not role:
@@ -314,16 +316,23 @@ class RoleService:
                 
                 # 获取loads信息以获取loads.name（用于生成system_prompt）
                 from app.models.load import Load
+                # loads.id 是整数类型，需要转换
+                try:
+                    load_id_int = int(load_id_str) if load_id_str.isdigit() else None
+                except (ValueError, AttributeError):
+                    load_id_int = None
+                if load_id_int is None:
+                    return False, f"无效的用户ID格式: {uuid}", None
                 load = db.query(Load).filter(Load.id == load_id_int).first()
                 if not load:
                     return False, f"未找到ID为 {uuid} 的用户", None
                 
                 # 创建新角色
-                # 注意：roles.id 会自动生成自增整数，roles.load_id = loads.id
+                # 注意：roles.id 会自动生成自增整数，roles.load_id = loads.id（字符串格式）
                 # 此时不生成system_prompt，等到信息采集完成时才生成
                 role, role_error, role_status = RoleService.create_role(
                     db=db,
-                    user_uuid=load_id_int,
+                    user_uuid=load_id_str,
                     name=name.strip(),
                     description=description.strip() if description else None,
                     system_prompt="",  # 暂时为空，等信息采集完成时再生成
@@ -338,7 +347,7 @@ class RoleService:
                     return False, f"创建角色失败: {role_error}", None
                 
                 # 创建成功后，刷新role对象
-                role = db.query(Role).filter(Role.load_id == load_id_int).first()
+                role = db.query(Role).filter(Role.load_id == load_id_str).first()
                 if not role:
                     return False, "创建角色后无法找到角色记录", None
                 
@@ -372,7 +381,7 @@ class RoleService:
                 
                 # 返回角色ID
                 role_id = role.id
-                logger.info(f"成功创建用户ID为 {load_id_int} 的角色，角色ID: {role_id}")
+                logger.info(f"成功创建用户ID为 {load_id_str} 的角色，角色ID: {role_id}")
                 return True, None, role_id
             
             # 更新角色信息（角色已存在的情况）
@@ -417,7 +426,7 @@ class RoleService:
             
             # 返回角色ID
             role_id = role.id
-            logger.info(f"成功更新用户ID为 {load_id_int} 的角色信息，角色ID: {role_id}")
+            logger.info(f"成功更新用户ID为 {load_id_str} 的角色信息，角色ID: {role_id}")
             return True, None, role_id
             
         except IntegrityError as e:
@@ -443,7 +452,7 @@ class RoleService:
         
         Args:
             db: 数据库会话
-            uuid: 用户ID（loads.id，整数）
+            uuid: 用户ID（loads.id，整数或字符串，存储为字符串）
             description: 描述（职业和喜好）
             system_prompt: 系统提示词（由前端生成）
             content: 用户最近在做什么（已废弃，不再存储）
@@ -453,17 +462,17 @@ class RoleService:
             Tuple[是否成功, 错误信息, 角色ID]
         """
         try:
-            # 确保 uuid 是整数类型
-            load_id_int = int(uuid) if not isinstance(uuid, int) else uuid
+            # 将 uuid 转换为字符串（数据库 load_id 是 varchar 类型）
+            load_id_str = str(uuid) if not isinstance(uuid, str) else uuid
             # 获取角色信息
-            role = db.query(Role).filter(Role.load_id == load_id_int).first()
+            role = db.query(Role).filter(Role.load_id == load_id_str).first()
             if not role:
-                return False, f"未找到用户ID为 {load_id_int} 的角色", None
+                return False, f"未找到用户ID为 {load_id_str} 的角色", None
             
             # 更新roles表（description和system_prompt）
             success_role, error_role, role_id = RoleService.update_role_by_uuid(
                 db=db,
-                uuid=load_id_int,
+                uuid=load_id_str,
                 description=description if description else None,
                 system_prompt=system_prompt
             )
@@ -474,10 +483,10 @@ class RoleService:
             db.commit()
             
             # 刷新角色对象以获取最新数据
-            role = db.query(Role).filter(Role.load_id == load_id_int).first()
+            role = db.query(Role).filter(Role.load_id == load_id_str).first()
             role_id = role.id if role else None
             
-            logger.info(f"成功提交信息采集数据: load_id={load_id_int}, role_id={role_id}")
+            logger.info(f"成功提交信息采集数据: load_id={load_id_str}, role_id={role_id}")
             return True, None, role_id
         except Exception as e:
             db.rollback()
@@ -495,24 +504,31 @@ class RoleService:
         
         Args:
             db: 数据库会话
-            uuid: 用户ID（loads.id，整数）
+            uuid: 用户ID（loads.id，整数或字符串，存储为字符串）
             
         Returns:
             Tuple[是否成功, 错误信息]
         """
         try:
-            # 确保 uuid 是整数类型
-            load_id_int = int(uuid) if not isinstance(uuid, int) else uuid
+            # 将 uuid 转换为字符串（数据库 load_id 是 varchar 类型）
+            load_id_str = str(uuid) if not isinstance(uuid, str) else uuid
             # 获取角色信息
-            role = db.query(Role).filter(Role.load_id == load_id_int).first()
+            role = db.query(Role).filter(Role.load_id == load_id_str).first()
             if not role:
-                return False, f"未找到用户ID为 {load_id_int} 的角色"
+                return False, f"未找到用户ID为 {load_id_str} 的角色"
             
             # 获取用户信息（用于生成system_prompt中的loads.name）
             from app.models.load import Load
+            # loads.id 是整数类型，需要转换
+            try:
+                load_id_int = int(load_id_str) if load_id_str.isdigit() else None
+            except (ValueError, AttributeError):
+                load_id_int = None
+            if load_id_int is None:
+                return False, f"无效的用户ID格式: {uuid}"
             load = db.query(Load).filter(Load.id == load_id_int).first()
             if not load:
-                return False, f"未找到ID为 {load_id_int} 的用户"
+                return False, f"未找到ID为 {load_id_str} 的用户"
             
             # 使用role.description，如果为空则使用load.description
             role_description = role.description if role.description else (load.description if load.description else '{{responsibility}}')
@@ -529,14 +545,14 @@ class RoleService:
             # 更新角色的system_prompt
             success_role, error_role, role_id = RoleService.update_role_by_uuid(
                 db=db,
-                uuid=load_id_int,
+                uuid=load_id_str,
                 system_prompt=system_prompt
             )
             
             if not success_role:
                 return False, f"更新system_prompt失败: {error_role}"
             
-            logger.info(f"成功为用户 {load_id_int} 生成并更新system_prompt")
+            logger.info(f"成功为用户 {load_id_str} 生成并更新system_prompt")
             return True, None
         except Exception as e:
             db.rollback()

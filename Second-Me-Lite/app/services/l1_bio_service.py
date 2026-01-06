@@ -16,7 +16,7 @@ class L1BioService:
         
         Args:
             db: 数据库会话
-            role_id: 角色ID（roles.load_id，Integer类型，对应loads.id）
+            role_id: 角色ID（roles.load_id，String类型，对应loads.id，存储为字符串）
             content_third_view: 新的第三方视角内容
             
         Returns:
@@ -62,7 +62,7 @@ class L1BioService:
         
         Args:
             db: 数据库会话
-            role_id: 角色ID（roles.load_id，Integer类型，对应loads.id）
+            role_id: 角色ID（roles.load_id，String类型，对应loads.id，存储为字符串）
             content_third_view: 新的第三方视角内容
             
         Returns:
@@ -216,7 +216,7 @@ class L1BioService:
         
         Args:
             db: 数据库会话
-            role_id: 角色ID（roles.load_id，Integer类型，对应loads.id）
+            role_id: 角色ID（roles.load_id，String类型，对应loads.id，存储为字符串）
                     注意：l1_bios.role_id 和 l1_versions.role_id 使用 roles.load_id，不是 roles.id
             
         Returns:

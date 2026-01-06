@@ -399,8 +399,9 @@ def create_conversation(
         
         # 获取参与者列表
         from app.models.conversation import ConversationParticipant
+        conversation_id_str = str(conversation.id)
         participants = db.query(ConversationParticipant).filter(
-            ConversationParticipant.conversation_id == conversation.id
+            ConversationParticipant.conversation_id == conversation_id_str
         ).all()
         
         return APIResponse.success(
@@ -458,7 +459,7 @@ def create_message(
                 "content": message.content,
                 "message_type": message.message_type,
                 "sender_type": message.sender_type,
-                "created_at": message.created_at.isoformat() if message.created_at else None
+                "created_at": message.create_time.isoformat() if message.create_time else None
             },
             message="消息创建成功"
         )
@@ -507,7 +508,7 @@ def get_messages_by_conversation(
                 "message_type": msg.message_type,
                 "attachment_url": msg.attachment_url,
                 "sender_type": msg.sender_type,
-                "created_at": msg.created_at.isoformat() if msg.created_at else None
+                "created_at": msg.create_time.isoformat() if msg.create_time else None
             })
         
         return APIResponse.success(
@@ -553,19 +554,21 @@ def get_conversations(
         from app.models.conversation import ConversationParticipant, Message
         
         conversations_data = []
+        user_id_str = str(user_id)
         for conv in conversations_list:
             # 获取会话的参与者列表
+            conversation_id_str = str(conv.id)
             participants = db.query(ConversationParticipant).filter(
-                ConversationParticipant.conversation_id == conv.id
+                ConversationParticipant.conversation_id == conversation_id_str
             ).all()
             
             # 获取其他参与者（除了当前用户）
-            other_participants = [p.user_id for p in participants if p.user_id != user_id]
+            other_participants = [p.user_id for p in participants if p.user_id != user_id_str]
             
             # 获取最后一条消息
             last_message = db.query(Message).filter(
-                Message.conversation_id == conv.id
-            ).order_by(Message.created_at.desc()).first()
+                Message.conversation_id == conversation_id_str
+            ).order_by(Message.create_time.desc()).first()
             
             conversations_data.append({
                 "id": str(conv.id),
@@ -573,11 +576,11 @@ def get_conversations(
                 "title": conv.title,
                 "participants": [str(p.user_id) for p in participants],
                 "other_participants": other_participants,
-                "last_message_at": last_message.created_at.isoformat() if last_message else None,
+                "last_message_at": last_message.create_time.isoformat() if last_message else None,
                 "last_message_content": last_message.content if last_message else None,
                 "unread_count": 0,  # 未读消息功能已移除
-                "created_at": conv.created_at.isoformat() if conv.created_at else None,
-                "updated_at": conv.updated_at.isoformat() if conv.updated_at else None
+                "created_at": conv.create_time.isoformat() if conv.create_time else None,
+                "updated_at": conv.update_time.isoformat() if conv.update_time else None
             })
         
         return APIResponse.success(
@@ -606,7 +609,9 @@ def info_collection_llm(
         
         # 获取角色信息（通过 Role.load_id = loads.id）
         from app.models.role import Role
-        role = db.query(Role).filter(Role.load_id == load_id).first()
+        # 将 load_id 转换为字符串（数据库 load_id 是 varchar 类型）
+        load_id_str = str(load_id) if not isinstance(load_id, str) else load_id
+        role = db.query(Role).filter(Role.load_id == load_id_str).first()
         
         if not role:
             logger.warning(f"未找到对应的角色（load_id: {load_id}），继续执行LLM调用但不记录消息")
@@ -631,10 +636,13 @@ def info_collection_llm(
         
         if conversation and role and not is_generation_instruction:
             from app.services.message_service import MessageService
+            # conversation_id 和 sender_id 需要转换为字符串（数据库字段是varchar类型）
+            conversation_id_str = str(conversation.id)
+            sender_id_str = str(load_id) if not isinstance(load_id, str) else load_id
             user_message, msg_error, msg_status = MessageService.create_message(
                 db=db,
-                conversation_id=conversation.id,  # 整数类型
-                sender_id=int(load_id) if not isinstance(load_id, int) else load_id,  # 用户ID，整数类型
+                conversation_id=conversation_id_str,
+                sender_id=sender_id_str,
                 content=request.query,
                 message_type='text',
                 sender_type='user'
@@ -658,17 +666,17 @@ def info_collection_llm(
             
             if not msg_error and messages_list:
                 # 转换为 OpenAI 格式
-                # 确保所有ID都是整数类型进行比较
-                load_id_int = int(load_id) if not isinstance(load_id, int) else load_id
-                role_id_int = role.id
+                # sender_id 是字符串类型，需要转换为字符串进行比较
+                load_id_str = str(load_id) if not isinstance(load_id, str) else load_id
+                role_id_str = str(role.id)
                 
                 for msg in messages_list:
-                    if msg.sender_id == load_id_int:  # 用户消息
+                    if msg.sender_id == load_id_str:  # 用户消息
                         history_messages.append({
                             "role": "user",
                             "content": msg.content
                         })
-                    elif msg.sender_id == role_id_int:  # AI消息
+                    elif msg.sender_id == role_id_str:  # AI消息
                         history_messages.append({
                             "role": "assistant",
                             "content": msg.content
@@ -730,10 +738,13 @@ def info_collection_llm(
         # 9. 保存AI回复消息
         if conversation and role and answer:
             from app.services.message_service import MessageService
+            # conversation_id 和 sender_id 需要转换为字符串（数据库字段是varchar类型）
+            conversation_id_str = str(conversation.id)
+            sender_id_str = str(role.id)
             ai_message, msg_error, msg_status = MessageService.create_message(
                 db=db,
-                conversation_id=conversation.id,  # 整数类型
-                sender_id=role.id,  # 角色ID（AI回复），整数类型
+                conversation_id=conversation_id_str,
+                sender_id=sender_id_str,
                 content=answer,
                 message_type='text',
                 sender_type='ai'

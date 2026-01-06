@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, ForeignKey
 from datetime import datetime
 from app.core.database import Base
 
@@ -35,60 +35,60 @@ class L1Version(Base):
     create_time = Column(DateTime, default=datetime.utcnow, nullable=False)
     status = Column(String(50), nullable=True)
     description = Column(Text, nullable=True)
-    role_id = Column(Integer, nullable=True)  # 角色ID，关联到 roles.load_id (loads.id，整数)
+    role_id = Column(String(64), nullable=True)  # 角色ID，关联到 roles.load_id (loads.id，字符串类型)
 
 
 class L1Bio(Base):
     """L1传记表"""
     __tablename__ = "l1_bios"
     
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)  # 自增主键 (bigserial)
     version = Column(Integer, ForeignKey("l1_versions.version", ondelete="CASCADE"), nullable=False, index=True)
-    role_id = Column(Integer, nullable=True)  # 角色ID，关联到 roles.load_id (loads.id，整数)
-    content = Column(Text, nullable=True)  # 第二人称视角内容
-    content_third_view = Column(Text, nullable=True)  # 第三人称视角内容
-    summary = Column(Text, nullable=True)  # 第二人称视角摘要
-    summary_third_view = Column(Text, nullable=True)  # 第三人称视角摘要
-    create_time = Column(DateTime, default=datetime.utcnow, nullable=False)
+    role_id = Column(String(64), nullable=False)  # 角色ID（varchar(64)类型，NOT NULL）
+    content = Column(String(6000), nullable=True)  # 第二人称视角内容 (varchar(6000))
+    content_third_view = Column(String(6000), nullable=True)  # 第三人称视角内容 (varchar(6000))
+    summary = Column(String(6000), nullable=True)  # 第二人称视角摘要 (varchar(6000))
+    summary_third_view = Column(String(6000), nullable=True)  # 第三人称视角摘要 (varchar(6000))
+    create_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
 
 
 class L1Shade(Base):
     """L1 Shade表"""
     __tablename__ = "l1_shades"
     
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)  # 自增主键 (bigserial)
     version = Column(Integer, ForeignKey("l1_versions.version", ondelete="CASCADE"), nullable=False, index=True)
-    role_id = Column(Integer, nullable=True)  # 角色ID，关联到 roles.load_id (loads.id，整数)
     name = Column(String(200), nullable=True)
     aspect = Column(String(200), nullable=True)
     icon = Column(String(100), nullable=True)
-    desc_third_view = Column(Text, nullable=True)
-    content_third_view = Column(Text, nullable=True)
-    desc_second_view = Column(Text, nullable=True)
-    content_second_view = Column(Text, nullable=True)
-    create_time = Column(DateTime, default=datetime.utcnow, nullable=False)
+    desc_third_view = Column(String(6000), nullable=True)  # varchar(6000)
+    content_third_view = Column(String(6000), nullable=True)  # varchar(6000)
+    desc_second_view = Column(String(6000), nullable=True)  # varchar(6000)
+    content_second_view = Column(String(6000), nullable=True)  # varchar(6000)
+    create_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    role_id = Column(String(64), nullable=False)  # 角色ID（varchar(64)类型，NOT NULL）
 
 
 class L1Cluster(Base):
     """L1聚类表"""
     __tablename__ = "l1_clusters"
     
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)  # 自增主键 (bigserial)
     version = Column(Integer, ForeignKey("l1_versions.version", ondelete="CASCADE"), nullable=False, index=True)
     cluster_id = Column(String(100), nullable=True)
-    memory_ids = Column(Text, nullable=True)  # JSON字符串或逗号分隔的ID列表
+    memory_ids = Column(String(50), nullable=True)  # varchar(50)
     cluster_center = Column(Vector(1536), nullable=True)  # 聚类中心向量（使用 pgvector 扩展）
-    create_time = Column(DateTime, default=datetime.utcnow, nullable=False)
+    create_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
 
 
 class L1ChunkTopic(Base):
     """L1 Chunk Topics表"""
     __tablename__ = "l1_chunk_topics"
     
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)  # 自增主键 (bigserial)
     version = Column(Integer, ForeignKey("l1_versions.version", ondelete="CASCADE"), nullable=False, index=True)
     chunk_id = Column(String(100), nullable=True)
-    topic = Column(Text, nullable=True)
-    tags = Column(Text, nullable=True)  # JSON字符串或逗号分隔的标签
-    create_time = Column(DateTime, default=datetime.utcnow, nullable=False)
+    topic = Column(String(6000), nullable=True)  # varchar(6000)
+    tags = Column(String(1024), nullable=True)  # varchar(1024)
+    create_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
 

@@ -1,5 +1,5 @@
-from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field
+from typing import Optional, Dict, Any, List, Union
+from pydantic import BaseModel, Field, field_validator
 
 
 class SimpleChatRequest(BaseModel):
@@ -109,9 +109,17 @@ class GenerateL1Request(BaseModel):
 
 class CreateConversationRequest(BaseModel):
     """创建会话请求模型"""
-    participant_ids: List[str]  # 参与者ID列表（loads.id 或 roles.id 的列表）
+    participant_ids: List[Union[str, int]]  # 参与者ID列表（可以是字符串或数字，会自动转换为字符串）
     conversation_type: str = 'single'  # 会话类型（'single' 单聊, 'group' 群聊，默认 'single'）
     title: Optional[str] = None  # 会话标题（可选）
+    
+    @field_validator('participant_ids', mode='before')
+    @classmethod
+    def convert_participant_ids(cls, v):
+        """将 participant_ids 中的元素转换为字符串"""
+        if isinstance(v, list):
+            return [str(item) for item in v]
+        return v
 
 class CreateMessageRequest(BaseModel):
     """创建消息请求模型"""

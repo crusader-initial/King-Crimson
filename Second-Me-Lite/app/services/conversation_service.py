@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import or_, and_, func
+from sqlalchemy import or_, and_, func, String
 from typing import Tuple, Optional, List
 from datetime import datetime
 import logging
@@ -54,13 +54,16 @@ class ConversationService:
                 return None, f"单聊会话必须恰好有2个参与者，当前有 {len(participant_ids)} 个", 400
             
             # 查找包含所有指定参与者的会话
+            # 将participant_ids转换为字符串列表
+            participant_ids_str = [str(pid) for pid in participant_ids]
             existing_conversation = db.query(Conversation).join(
-                ConversationParticipant
+                ConversationParticipant,
+                func.cast(Conversation.id, String) == ConversationParticipant.conversation_id
             ).filter(
                 Conversation.conversation_type == conversation_type,
-                ConversationParticipant.user_id.in_(participant_ids)
+                ConversationParticipant.user_id.in_(participant_ids_str)
             ).group_by(Conversation.id).having(
-                func.count(ConversationParticipant.user_id.distinct()) == len(participant_ids)
+                func.count(ConversationParticipant.user_id.distinct()) == len(participant_ids_str)
             ).first()
             
             if existing_conversation:
@@ -76,11 +79,13 @@ class ConversationService:
             db.flush()  # 获取conversation.id
             
             # 为所有参与者创建记录
-            # 注意：conversation_participants.user_id 字段存储的是参与者ID，可能是用户ID（loads.id）或角色ID（roles.id）
+            # 注意：conversation_participants.conversation_id 和 user_id 都是varchar类型
+            # conversation_id 存储 conversations.id 的字符串形式
+            conversation_id_str = str(new_conversation.id)
             for participant_id in participant_ids:
                 participant = ConversationParticipant(
-                    conversation_id=new_conversation.id,
-                    user_id=participant_id  # 参与者ID（loads.id 或 roles.id）
+                    conversation_id=conversation_id_str,  # 转换为字符串
+                    user_id=str(participant_id)  # 确保是字符串类型
                 )
                 db.add(participant)
             
@@ -88,8 +93,9 @@ class ConversationService:
             db.refresh(new_conversation)
             
             # 验证插入的数据
+            conversation_id_str = str(new_conversation.id)
             inserted_participants = db.query(ConversationParticipant).filter(
-                ConversationParticipant.conversation_id == new_conversation.id
+                ConversationParticipant.conversation_id == conversation_id_str
             ).all()
             logger.info(f"成功创建新会话: {new_conversation.id} - 类型: {conversation_type}")
             logger.info(f"  - 参与者列表: {participant_ids}")
@@ -103,13 +109,15 @@ class ConversationService:
             db.rollback()
             # 如果是因为唯一约束冲突，尝试再次查询
             if "uq_conversation_user" in str(e):
+                participant_ids_str = [str(pid) for pid in participant_ids]
                 existing_conversation = db.query(Conversation).join(
-                    ConversationParticipant
+                    ConversationParticipant,
+                    func.cast(Conversation.id, String) == ConversationParticipant.conversation_id
                 ).filter(
                     Conversation.conversation_type == conversation_type,
-                    ConversationParticipant.user_id.in_(participant_ids)
+                    ConversationParticipant.user_id.in_(participant_ids_str)
                 ).group_by(Conversation.id).having(
-                    func.count(ConversationParticipant.user_id.distinct()) == len(participant_ids)
+                    func.count(ConversationParticipant.user_id.distinct()) == len(participant_ids_str)
                 ).first()
                 if existing_conversation:
                     return existing_conversation, None, 200
@@ -136,8 +144,13 @@ class ConversationService:
             Tuple[Conversation对象, 错误消息, HTTP状态码]
         """
         try:
+            # conversation_id 可能是字符串或整数，需要处理
+            try:
+                conversation_id_int = int(conversation_id) if isinstance(conversation_id, str) else conversation_id
+            except (ValueError, TypeError):
+                conversation_id_int = conversation_id
             conversation = db.query(Conversation).filter(
-                Conversation.id == conversation_id
+                Conversation.id == conversation_id_int
             ).first()
             
             if not conversation:
@@ -169,11 +182,13 @@ class ConversationService:
             Tuple[Conversation对象, 错误消息, HTTP状态码]
         """
         try:
+            participant_ids_str = [str(participant1_id), str(participant2_id)]
             conversation = db.query(Conversation).join(
-                ConversationParticipant
+                ConversationParticipant,
+                func.cast(Conversation.id, String) == ConversationParticipant.conversation_id
             ).filter(
                 Conversation.conversation_type == conversation_type,
-                ConversationParticipant.user_id.in_([participant1_id, participant2_id])
+                ConversationParticipant.user_id.in_(participant_ids_str)
             ).group_by(Conversation.id).having(
                 func.count(ConversationParticipant.user_id.distinct()) == 2
             ).first()
@@ -208,12 +223,14 @@ class ConversationService:
         """
         try:
             # 通过conversation_participants表查找用户参与的所有会话
+            user_id_str = str(user_id)
             query = db.query(Conversation).join(
-                ConversationParticipant
+                ConversationParticipant,
+                func.cast(Conversation.id, String) == ConversationParticipant.conversation_id
             ).filter(
-                ConversationParticipant.user_id == user_id
+                ConversationParticipant.user_id == user_id_str
             ).order_by(
-                Conversation.updated_at.desc()
+                Conversation.update_time.desc()
             )
             
             if limit:
@@ -244,8 +261,13 @@ class ConversationService:
             Tuple[是否成功, 错误信息]
         """
         try:
+            # conversation_id 可能是字符串或整数，需要处理
+            try:
+                conversation_id_int = int(conversation_id) if isinstance(conversation_id, str) else conversation_id
+            except (ValueError, TypeError):
+                conversation_id_int = conversation_id
             conversation = db.query(Conversation).filter(
-                Conversation.id == conversation_id
+                Conversation.id == conversation_id_int
             ).first()
             
             if not conversation:
@@ -254,7 +276,7 @@ class ConversationService:
             if title is not None:
                 conversation.title = title.strip() if title else None
             
-            conversation.updated_at = datetime.utcnow()
+            conversation.update_time = datetime.utcnow()
             db.commit()
             
             logger.info(f"成功更新会话 {conversation_id}")
@@ -283,14 +305,19 @@ class ConversationService:
             Tuple[是否成功, 错误信息]
         """
         try:
+            # conversation_id 可能是字符串或整数，需要处理
+            try:
+                conversation_id_int = int(conversation_id) if isinstance(conversation_id, str) else conversation_id
+            except (ValueError, TypeError):
+                conversation_id_int = conversation_id
             conversation = db.query(Conversation).filter(
-                Conversation.id == conversation_id
+                Conversation.id == conversation_id_int
             ).first()
             
             if not conversation:
                 return False, f"未找到ID为 {conversation_id} 的会话"
             
-            conversation.updated_at = datetime.utcnow()
+            conversation.update_time = datetime.utcnow()
             db.commit()
             
             logger.info(f"成功更新会话 {conversation_id} 的最后一条消息")
@@ -317,8 +344,10 @@ class ConversationService:
             Tuple[参与者列表, 错误消息, HTTP状态码]
         """
         try:
+            # conversation_id 需要转换为字符串
+            conversation_id_str = str(conversation_id)
             participants = db.query(ConversationParticipant).filter(
-                ConversationParticipant.conversation_id == conversation_id
+                ConversationParticipant.conversation_id == conversation_id_str
             ).all()
             
             return participants, None, 200
@@ -345,9 +374,12 @@ class ConversationService:
             Tuple[是否成功, 错误信息]
         """
         try:
+            # 转换为字符串类型
+            conversation_id_str = str(conversation_id)
+            user_id_str = str(user_id)
             participant = db.query(ConversationParticipant).filter(
-                ConversationParticipant.conversation_id == conversation_id,
-                ConversationParticipant.user_id == user_id
+                ConversationParticipant.conversation_id == conversation_id_str,
+                ConversationParticipant.user_id == user_id_str
             ).first()
             
             if not participant:
@@ -380,8 +412,13 @@ class ConversationService:
             Tuple[是否成功, 错误信息]
         """
         try:
+            # conversation_id 可能是字符串或整数，需要处理
+            try:
+                conversation_id_int = int(conversation_id) if isinstance(conversation_id, str) else conversation_id
+            except (ValueError, TypeError):
+                conversation_id_int = conversation_id
             conversation = db.query(Conversation).filter(
-                Conversation.id == conversation_id
+                Conversation.id == conversation_id_int
             ).first()
             
             if not conversation:

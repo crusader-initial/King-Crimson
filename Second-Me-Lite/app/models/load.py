@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, CheckConstraint
+from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, CheckConstraint
 from datetime import datetime
 from app.core.database import Base
 
@@ -7,16 +7,16 @@ class Load(Base):
     """用户表（loads）"""
     __tablename__ = "loads"
     
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)  # 自增主键 (bigserial)
     name = Column(String(255), nullable=False)
-    description = Column(Text, nullable=True)
+    description = Column(String(2000), nullable=True)  # varchar(2000)
     email = Column(String(255), nullable=False, default='')
-    avatar_data = Column(Text, nullable=True)
+    avatar_data = Column(String(255), nullable=True)  # varchar(255)
     instance_id = Column(String(255), nullable=True)
     instance_password = Column(String(255), nullable=True)
-    status = Column(String(20), default='active', nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)
+    status = Column(String(50), default='active', nullable=True)  # varchar(50)
+    create_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    update_time = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     user_mobile = Column(String(20), nullable=True)  # 手机号字段
     
     __table_args__ = (
@@ -34,7 +34,7 @@ class Load(Base):
             'instance_id': self.instance_id,
             'status': self.status,
             'user_mobile': self.user_mobile,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'created_at': self.create_time.isoformat() if self.create_time else None,
+            'updated_at': self.update_time.isoformat() if self.update_time else None,
         }
 

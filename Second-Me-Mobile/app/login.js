@@ -101,11 +101,12 @@ export default function LoginScreen() {
       const response = await loginOrCreateUser(phoneNumber.trim());
       
       if (response && response.code === 200 && response.data) {
-        const userId = response.data.id;
+        // 确保 userId 是字符串类型（AsyncStorage 在 Android 上要求字符串）
+        const userId = String(response.data.id);
         const userInfo = {
           id: userId,
-          user_mobile: response.data.user_mobile,
-          name: response.data.name
+          user_mobile: response.data.user_mobile || '',
+          name: response.data.name || ''
         };
         
         // 保存用户ID和信息到Context和AsyncStorage

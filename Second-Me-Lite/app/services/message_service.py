@@ -152,14 +152,16 @@ class MessageService:
             Tuple[消息列表, 错误消息, HTTP状态码]
         """
         try:
+            # 确保 conversation_id 是字符串类型
+            conversation_id_str = str(conversation_id)
             query = db.query(Message).filter(
-                Message.conversation_id == conversation_id
+                Message.conversation_id == conversation_id_str
             )
             
             if order_by_desc:
-                query = query.order_by(Message.created_at.desc())
+                query = query.order_by(Message.create_time.desc())
             else:
-                query = query.order_by(Message.created_at.asc())
+                query = query.order_by(Message.create_time.asc())
             
             if limit:
                 query = query.limit(limit).offset(offset)

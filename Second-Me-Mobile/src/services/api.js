@@ -36,7 +36,7 @@ try {
 // 请将下面的 YOUR_LOCAL_IP 替换为你的本机IP地址（真机调试时使用）
 // 如果使用模拟器，可以保持为 null，会自动使用对应的模拟器地址
 
-const LOCAL_IP = '100.84.194.35'; // 例如：'192.168.1.100'，真机调试时填写，模拟器时设为 null
+const LOCAL_IP = '100.84.194.66'; // 例如：'192.168.1.100'，真机调试时填写，模拟器时设为 null
 
 // 根据配置选择API地址
 let BASE_URL;
@@ -48,7 +48,7 @@ if (LOCAL_IP) {
   BASE_URL = 'http://10.0.2.2:8001/api';
 } else {
   // iOS 模拟器
-  BASE_URL = 'http://localhost:8001/api';
+  BASE_URL = 'http://localhost:8001/api'; 
 }
 
 const api = axios.create({
@@ -175,14 +175,17 @@ export const createConversation = async (participantIds, conversationType = 'sin
 // 创建消息记录（新表结构：移除receiver_id，添加sender_type）
 export const createMessage = async (conversationId, senderId, content, messageType = 'text', attachmentUrl = null, senderType = 'user') => {
   try {
-    const response = await api.post('/messages', {
-      conversation_id: conversationId,
-      sender_id: senderId,
-      content: content,
-      message_type: messageType,
-      attachment_url: attachmentUrl,
-      sender_type: senderType  // 'user' 真实用户, 'ai' AI用户
-    });
+    // 确保所有字段类型正确，符合后端 schema 要求
+    const requestData = {
+      conversation_id: String(conversationId || ''),  // 确保是字符串类型
+      sender_id: String(senderId || ''),  // 确保是字符串类型
+      content: String(content || ''),  // 确保是字符串类型
+      message_type: messageType || 'text',  // 确保有默认值
+      attachment_url: attachmentUrl || null,  // 确保 null 而不是 undefined
+      sender_type: senderType || 'user'  // 确保有默认值
+    };
+    
+    const response = await api.post('/messages', requestData);
     return response.data;
   } catch (error) {
     console.error('Create message error:', error);
@@ -381,6 +384,21 @@ export const submitInfoCollection = async (userId, data) => {
     return response.data;
   } catch (error) {
     console.error('Submit info collection error:', error);
+    throw error;
+  }
+};
+
+// 导出消息为文档
+export const exportMessages = async (loadId, title = '聊天记录导出', description = '从消息导出的文档') => {
+  try {
+    const response = await api.post('/file/export-messages', {
+      load_id: loadId,
+      title: title,
+      description: description
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Export messages error:', error);
     throw error;
   }
 };

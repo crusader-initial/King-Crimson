@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, CheckConstraint, Boolean
+from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, ForeignKey, CheckConstraint, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from datetime import datetime
@@ -33,17 +33,17 @@ class Memory(Base):
     """文件元数据表"""
     __tablename__ = "memories"
     
-    id = Column(Integer, primary_key=True, autoincrement=True)  # 自增主键 (serial4)
-    role_id = Column(Integer, ForeignKey('roles.id', ondelete='SET NULL'), nullable=False, index=True)  # 关联到 roles.id（整数，NOT NULL）
+    id = Column(BigInteger, primary_key=True, autoincrement=True)  # 自增主键 (bigserial)
+    role_id = Column(String(64), nullable=False, index=True)  # 角色ID（varchar(64)类型，NOT NULL）
     name = Column(String(255), nullable=False)
     size = Column(Integer, nullable=False)
     type = Column(String(50), nullable=False)
     path = Column(String(1024), nullable=False)
-    meta_data = Column(Text, nullable=True)
-    document_id = Column(Integer, nullable=True)  # 关联到 document.id (int4类型)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-    status = Column(String(20), default='active', nullable=False)
+    meta_data = Column(String(2048), nullable=True)  # varchar(2048)
+    document_id = Column(String(64), nullable=True)  # 关联到 document.id (varchar(64)类型)
+    create_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    update_time = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    status = Column(String(50), default='active', nullable=False)  # varchar(50)
     
     __table_args__ = (
         CheckConstraint("status IN ('active', 'deleted')", name='memories_status_check'),
@@ -54,23 +54,23 @@ class Document(Base):
     """文档表"""
     __tablename__ = "document"  # 表名是单数，带引号
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)  # 自增主键 (bigserial)
     name = Column(String(255), default='', nullable=False)
     title = Column(String(511), default='', nullable=False)
-    extract_status = Column(String(20), default='INITIALIZED', nullable=False)
-    embedding_status = Column(String(20), default='INITIALIZED', nullable=False)
-    analyze_status = Column(String(20), default='INITIALIZED', nullable=False)
+    extract_status = Column(String(50), default='INITIALIZED', nullable=False)  # varchar(50)
+    embedding_status = Column(String(50), default='INITIALIZED', nullable=False)  # varchar(50)
+    analyze_status = Column(String(50), default='INITIALIZED', nullable=False)  # varchar(50)
     mime_type = Column(String(50), default='', nullable=False)
-    raw_content = Column(Text, nullable=True)
+    raw_content = Column(String(6000), nullable=True)  # varchar(6000)
     user_description = Column(String(255), default='', nullable=False)
-    create_time = Column(DateTime, default=datetime.utcnow, nullable=False)
-    update_time = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    create_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    update_time = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     url = Column(String(1023), default='', nullable=False)
     document_size = Column(Integer, default=0, nullable=False)
-    insight = Column(Text, nullable=True)
-    summary = Column(Text, nullable=True)
-    keywords = Column(Text, nullable=True)
-    role_id = Column(Integer, ForeignKey('roles.id', ondelete='SET NULL'), nullable=True, index=True)  # 关联到 roles.id（整数）
+    insight = Column(String(6000), nullable=True)  # varchar(6000)
+    summary = Column(String(6000), nullable=True)  # varchar(6000)
+    keywords = Column(String(1024), nullable=True)  # varchar(1024)
+    role_id = Column(String(64), nullable=True, index=True)  # 角色ID（varchar(64)类型，无外键约束）
     
     __table_args__ = (
         CheckConstraint("extract_status IN ('INITIALIZED', 'SUCCESS', 'FAILED')", name='document_extract_status_check'),
@@ -85,13 +85,13 @@ class Chunk(Base):
     """文档切片表"""
     __tablename__ = "chunk"
 
-    id = Column(Integer, primary_key=True, index=True)
-    document_id = Column(Integer, ForeignKey("document.id", ondelete="CASCADE"), nullable=False)
-    content = Column(Text, nullable=False)
+    id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)  # 自增主键 (bigserial)
+    document_id = Column(Integer, ForeignKey("document.id", ondelete="CASCADE"), nullable=False)  # 关联到 document.id (int4类型)
+    content = Column(String(6000), nullable=False)  # varchar(6000)
     has_embedding = Column(Boolean, default=False, nullable=False)
-    tags = Column(Text, nullable=True)
+    tags = Column(Text, nullable=True)  # 保持 text 类型
     topic = Column(String(255), nullable=True)
-    create_time = Column(DateTime, default=datetime.utcnow, nullable=False)
+    create_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     
     document = relationship("Document", back_populates="chunks")
 

@@ -61,8 +61,10 @@ export const UserProvider = ({ children }) => {
   // 登录：保存用户ID和信息
   const login = async (id, info = null) => {
     try {
-      await AsyncStorage.setItem(USER_STORAGE_KEY, id);
-      setUserId(id);
+      // 确保 id 是字符串类型（AsyncStorage 在 Android 上要求字符串）
+      const userIdString = String(id);
+      await AsyncStorage.setItem(USER_STORAGE_KEY, userIdString);
+      setUserId(userIdString);
       
       if (info) {
         await AsyncStorage.setItem(USER_INFO_STORAGE_KEY, JSON.stringify(info));

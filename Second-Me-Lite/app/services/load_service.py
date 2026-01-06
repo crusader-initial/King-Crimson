@@ -161,9 +161,9 @@ class LoadService:
                     return False, f"无效的状态值: {status}。允许的值: active, inactive, deleted"
                 load.status = status
             
-            # 更新 updated_at 时间戳
+            # 更新 update_time 时间戳
             from datetime import datetime
-            load.updated_at = datetime.utcnow()
+            load.update_time = datetime.utcnow()
             
             db.commit()
             # 确保 load_id 是整数类型
@@ -231,9 +231,9 @@ class LoadService:
             # 只更新description
             load.description = description
             
-            # 更新 updated_at 时间戳
+            # 更新 update_time 时间戳
             from datetime import datetime
-            load.updated_at = datetime.utcnow()
+            load.update_time = datetime.utcnow()
             
             db.commit()
             # 确保 load_id 是整数类型

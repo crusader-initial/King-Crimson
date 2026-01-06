@@ -153,7 +153,7 @@ export default function HomeScreen() {
             <View style={styles.sideSheetSearchWrapper}>
               <View style={styles.sideSheetSearchBox}>
                 <Image
-                  source={require('../assets/home-memory- search.png')}
+                  source={require('../assets/home-memory-search.png')}
                   style={styles.sideSheetSearchIcon}
                   resizeMode="contain"
                 />

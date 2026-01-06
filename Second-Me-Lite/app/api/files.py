@@ -246,7 +246,9 @@ def export_messages_to_document(
         
         # 如果还没有 role_id，尝试从 load_id 查询
         if not role_id:
-            role = db.query(Role).filter(Role.load_id == request.load_id).first()
+            # 将 load_id 转换为字符串（数据库 load_id 是 varchar 类型）
+            load_id_str = str(request.load_id) if not isinstance(request.load_id, str) else request.load_id
+            role = db.query(Role).filter(Role.load_id == load_id_str).first()
             if role:
                 role_id = role.id
                 logger.info(f"从 load_id 查询到 role_id: {role_id}")

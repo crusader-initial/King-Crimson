@@ -20,7 +20,8 @@ import {
   getUserById,
   getRoleByUuid,
   createConversation,
-  createMessage
+  createMessage,
+  exportMessages
 } from '../src/services/api';
 import { useUser } from '../src/contexts/UserContext';
 
@@ -388,6 +389,17 @@ export default function InfoCollectionScreen() {
           system_prompt: systemPrompt
         });
         console.log('信息采集数据已提交');
+      }
+      
+      // 信息采集完成后，调用导出消息接口
+      if (userId) {
+        try {
+          await exportMessages(userId, '聊天记录导出', '从消息导出的文档');
+          console.log('消息导出成功');
+        } catch (error) {
+          console.error('导出消息失败:', error);
+          // 即使失败也继续跳转，不阻塞用户流程
+        }
       }
     } catch (error) {
       console.error('提交信息采集数据失败:', error);
