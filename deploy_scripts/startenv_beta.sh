@@ -11,7 +11,8 @@ conda activate py311
 python --version
 echo "conda切换结束"
 
-pip install -r /home/q/www/pf_king_crimson/webapps/ROOT/requirements.txt -i http://devpi.corp.qunar.com/qunar/dev/+simple/ --trusted-host devpi.corp.qunar.com
+
+python run.py
 
 export AUTO_ENV_NAME="beta"
 
