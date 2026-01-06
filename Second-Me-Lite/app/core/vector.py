@@ -5,11 +5,12 @@ from typing import List, Dict, Any, Optional
 import json
 import logging
 import numpy as np
+from openai import OpenAI
 
-# 导入 HuggingFace transformers
-from transformers import AutoTokenizer, AutoModel
-import torch
-import torch.nn.functional as F
+# 导入 HuggingFace transformers (延迟导入)
+# from transformers import AutoTokenizer, AutoModel
+# import torch
+# import torch.nn.functional as F
 
 logger = logging.getLogger(__name__)
 
@@ -17,17 +18,41 @@ logger = logging.getLogger(__name__)
 _model = None
 _tokenizer = None
 _device = None
+_openai_client = None
+
+def _get_openai_client():
+    global _openai_client
+    if _openai_client is None:
+        api_key = settings.EMBEDDING_API_KEY or settings.CHAT_API_KEY
+        base_url = settings.EMBEDDING_BASE_URL or settings.OPENAI_BASE_URL
+        
+        if not api_key:
+            raise ValueError("API Key is missing. Please set CHAT_API_KEY or EMBEDDING_API_KEY in .env")
+            
+        _openai_client = OpenAI(
+            api_key=api_key,
+            base_url=base_url
+        )
+    return _openai_client
 
 def _get_model():
     """
     延迟加载模型，避免启动时加载
-    首次调用时会从 HuggingFace 下载模型（需要网络）
-    
-    Returns:
-        tuple: (model, tokenizer, device)
+    如果使用 OpenAI Embedding，则不需要加载本地模型
     """
+    if settings.EMBEDDING_PROVIDER == "openai":
+        return None, None, None
+
     global _model, _tokenizer, _device
     if _model is None or _tokenizer is None:
+        try:
+            from transformers import AutoTokenizer, AutoModel
+            import torch
+        except ImportError:
+            logger.error("Required libraries 'torch' and 'transformers' are not installed. "
+                         "Please install them to use local embeddings, or switch to 'openai' provider.")
+            raise
+
         model_name = settings.EMBEDDING_MODEL
         logger.info(f"Loading embedding model: {model_name}")
         
@@ -49,18 +74,33 @@ def _get_model():
 
 def get_embedding(text: str, max_length: int = 512) -> List[float]:
     """
-    生成文本的嵌入向量（使用 BAAI/bge-m3 模型）
-    
-    Args:
-        text: 要生成向量的文本
-        max_length: 最大 token 长度（bge-m3 最大支持 8192，默认 512 以平衡性能和效果）
-        
-    Returns:
-        嵌入向量列表（1024 维）
+    生成文本的嵌入向量
+    支持 local (BAAI/bge-m3) 和 openai 模式
     """
+    if settings.EMBEDDING_PROVIDER == "openai":
+        try:
+            client = _get_openai_client()
+            kwargs = {
+                "model": settings.OPENAI_EMBEDDING_MODEL,
+                "input": text
+            }
+            # 只有部分 OpenAI 模型支持 dimensions 参数，且 bge-m3 通过 API 调用时通常不需要传 dimensions
+            # 如果是 text-embedding-3 系列才传
+            if "text-embedding-3" in settings.OPENAI_EMBEDDING_MODEL:
+                kwargs["dimensions"] = settings.OPENAI_EMBEDDING_DIMENSIONS
+                
+            response = client.embeddings.create(**kwargs)
+            return response.data[0].embedding
+        except Exception as e:
+            logger.error(f"Failed to generate openai embedding: {str(e)}", exc_info=True)
+            raise
+
+    # Local mode
     model, tokenizer, device = _get_model()
     
     try:
+        import torch
+        import torch.nn.functional as F
         # 对文本进行编码
         encoded_input = tokenizer(
             text,
@@ -137,17 +177,33 @@ def get_embedding_with_chunking(text: str, max_text_length: int = 8192, chunk_si
 
 def get_embeddings_batch(texts: List[str], max_length: int = 512) -> np.ndarray:
     """
-    批量生成文本的嵌入向量（使用 BAAI/bge-m3 模型）
-    
-    Args:
-        texts: 要生成向量的文本列表
-        
-    Returns:
-        numpy array，形状为 (len(texts), embedding_dim)
+    批量生成文本的嵌入向量
+    支持 local (BAAI/bge-m3) 和 openai 模式
     """
+    if settings.EMBEDDING_PROVIDER == "openai":
+        try:
+            client = _get_openai_client()
+            kwargs = {
+                "model": settings.OPENAI_EMBEDDING_MODEL,
+                "input": texts
+            }
+            if "text-embedding-3" in settings.OPENAI_EMBEDDING_MODEL:
+                kwargs["dimensions"] = settings.OPENAI_EMBEDDING_DIMENSIONS
+                
+            response = client.embeddings.create(**kwargs)
+            # 保证顺序一致
+            embeddings = [data.embedding for data in response.data]
+            return np.array(embeddings)
+        except Exception as e:
+            logger.error(f"Failed to generate openai embeddings batch: {str(e)}", exc_info=True)
+            raise
+
+    # Local mode
     model, tokenizer, device = _get_model()
     
     try:
+        import torch
+        import torch.nn.functional as F
         # 批量编码文本
         encoded_input = tokenizer(
             texts,
