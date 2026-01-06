@@ -89,7 +89,10 @@ export default function Layout() {
         <Stack.Screen name="name-input" />
         <Stack.Screen name="info-collection" />
         <Stack.Screen name="home" />
-        <Stack.Screen name="upload" options={{ title: 'Upload Character', headerShown: true }} />
+        <Stack.Screen
+          name="upload"
+          options={{ title: '导入', headerShown: true, headerTitleAlign: 'center' }}
+        />
         <Stack.Screen name="chat" options={{ title: 'Chat with AI', headerShown: true }} />
       </Stack>
     </UserProvider>

@@ -454,7 +454,7 @@ export default function InfoCollectionScreen() {
       {/* 输入区域或下一步按钮 - 固定在底部 */}
       <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 40}
       >
         {isCompleted ? (
           <View style={styles.inputContainer}>

@@ -21,6 +21,7 @@ export default function LoginScreen() {
   const [verificationCode, setVerificationCode] = useState('');
   const [countdown, setCountdown] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [agreed, setAgreed] = useState(false);
   const codeInputRef = useRef(null);
   const { login } = useUser();
 
@@ -64,6 +65,12 @@ export default function LoginScreen() {
 
   // 处理登录
   const handleLogin = async () => {
+    // 验证是否同意协议
+    if (!agreed) {
+      Alert.alert('提示', '请先阅读并同意《服务协议》和《个人信息保护指引》');
+      return;
+    }
+
     // 验证手机号
     if (!phoneNumber.trim()) {
       Alert.alert('提示', '请输入手机号');
@@ -142,7 +149,7 @@ export default function LoginScreen() {
       >
         {/* 标题区域 */}
         <View style={styles.header}>
-          <Text style={styles.title}>King Crimson</Text>
+          <Text style={styles.title}>知我</Text>
           {/*<Text style={styles.subtitle}>请输入手机号和验证码登录</Text>*/}
         </View>
 
@@ -187,7 +194,7 @@ export default function LoginScreen() {
                 disabled={countdown > 0 || loading}
               >
                 <Text style={styles.codeButtonText}>
-                  {countdown > 0 ? `${countdown}秒` : '获取验证码'}
+                  {countdown > 0 ? `${countdown}秒` : '发送验证码'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -198,23 +205,37 @@ export default function LoginScreen() {
         <TouchableOpacity
           style={[
             styles.loginButton,
-            loading && styles.loginButtonDisabled
+            (loading || !agreed) && styles.loginButtonDisabled
           ]}
           onPress={handleLogin}
-          disabled={loading}
+          disabled={loading || !agreed}
           activeOpacity={0.8}
         >
           {loading ? (
-            <ActivityIndicator size="small" color="#FF6B9D" />
+            <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
             <Text style={styles.loginButtonText}>登录</Text>
           )}
         </TouchableOpacity>
 
-        {/* 提示文字 */}
-        <Text style={styles.hintText}>
-          验证码仅用于演示，输入任意6位数字即可
-        </Text>
+
+
+        {/* 协议确认 */}
+        <TouchableOpacity
+          style={styles.agreementContainer}
+          onPress={() => setAgreed(!agreed)}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
+            {agreed && <Text style={styles.checkmark}>✓</Text>}
+          </View>
+          <Text style={styles.agreementText}>
+            阅读并同意
+            <Text style={styles.linkText}>《服务协议》</Text>
+            和
+            <Text style={styles.linkText}>《个人信息保护指引》</Text>
+          </Text>
+        </TouchableOpacity>
       </KeyboardAvoidingView>
     </LinearGradient>
   );
@@ -277,7 +298,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   codeButton: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#000000',
     borderRadius: 12,
     paddingHorizontal: 20,
     paddingVertical: 14,
@@ -288,12 +309,12 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   codeButtonText: {
-    color: '#FF6B9D',
+    color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: 'bold',
   },
   loginButton: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#000000',
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
@@ -309,7 +330,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   loginButtonText: {
-    color: '#FF6B9D',
+    color: '#FFFFFF',
     fontSize: 18,
     fontWeight: 'bold',
   },
@@ -318,5 +339,40 @@ const styles = StyleSheet.create({
     color: '#999999',
     textAlign: 'center',
   },
+  agreementContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 20,
+    paddingHorizontal: 10,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#333333',
+    marginRight: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  checkboxChecked: {
+    backgroundColor: '#000000',
+    borderColor: '#000000',
+  },
+  checkmark: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  agreementText: {
+    fontSize: 12,
+    color: '#666666',
+    flex: 1,
+    lineHeight: 18,
+  },
+  linkText: {
+    color: '#000000',
+    fontWeight: '500',
+  },
 });
-

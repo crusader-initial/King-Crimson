@@ -62,14 +62,14 @@ export default function NameInputScreen() {
       >
         {/* 标题文字区域 */}
         <View style={styles.titleContainer}>
-          <Text style={styles.titleText}>"我"的名字叫什么</Text>
+          <Text style={styles.titleText}>给“我”起个名字吧！</Text>
         </View>
 
         {/* 输入框区域 */}
         <View style={styles.inputWrapper}>
           <TextInput
             style={styles.input}
-            placeholder="输入你的名字"
+            placeholder="输入昵称"
             placeholderTextColor="rgba(0, 0, 0, 0.4)"
             value={name}
             onChangeText={setName}

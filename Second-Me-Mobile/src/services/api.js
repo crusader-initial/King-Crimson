@@ -23,38 +23,33 @@ try {
 
 // 后端 API 地址配置
 // 后端运行在 0.0.0.0:8001，允许其他电脑访问
-// 
-// 配置说明：
-// 1. Android 模拟器：使用 10.0.2.2（模拟器自动映射到宿主机 localhost）
-// 2. Android 真机：需要使用你电脑的局域网 IP 地址（例如：192.168.1.100）
-//    获取 IP 方法：Windows 运行 `ipconfig`，查找 "IPv4 地址"
-//                  Mac/Linux 运行 `ifconfig` 或 `ip addr`
-// 3. iOS 模拟器：使用 localhost
-// 4. iOS 真机：需要使用你电脑的局域网 IP 地址
 //
-// 请根据你的运行环境修改下面的 IP 地址
-// ⚠️ 重要：如果在真机上运行，必须设置为你电脑的局域网 IP 地址
-// 如果为 null，则使用默认地址（仅适用于模拟器）
-const YOUR_COMPUTER_IP = '100.84.194.66';  // 你的 WLAN IP 地址
+// 配置说明：
+// 1. 真机调试：使用本机IP地址（如：192.168.1.100），需要确保手机和电脑在同一WiFi网络
+// 2. Android 模拟器：使用 10.0.2.2 访问宿主机
+// 3. iOS 模拟器：使用 localhost
+//
+// 获取本机IP方法（macOS）：
+// 在终端运行：ifconfig | grep "inet " | grep -v 127.0.0.1
+// 或者查看：系统设置 -> 网络 -> 高级 -> TCP/IP -> IPv4地址
+//
+// 请将下面的 YOUR_LOCAL_IP 替换为你的本机IP地址（真机调试时使用）
+// 如果使用模拟器，可以保持为 null，会自动使用对应的模拟器地址
 
-// 根据平台和是否设置了 IP 来决定使用哪个地址
-// 如果设置了 YOUR_COMPUTER_IP，则使用 IP（适用于真机和模拟器）
-// 如果为 null，则使用默认地址（仅适用于模拟器）
-const getBaseUrl = () => {
-  if (Platform.OS === 'android') {
-    // Android：如果设置了 IP 则使用 IP，否则使用 10.0.2.2（仅模拟器）
-    return YOUR_COMPUTER_IP 
-      ? `http://${YOUR_COMPUTER_IP}:8001/api`
-      : 'http://10.0.2.2:8001/api';
-  } else {
-    // iOS：如果设置了 IP 则使用 IP，否则使用 localhost（仅模拟器）
-    return YOUR_COMPUTER_IP
-      ? `http://${YOUR_COMPUTER_IP}:8001/api`
-      : 'http://localhost:8001/api';
-  }
-};
+const LOCAL_IP = '100.84.194.35'; // 例如：'192.168.1.100'，真机调试时填写，模拟器时设为 null
 
-const BASE_URL = getBaseUrl();
+// 根据配置选择API地址
+let BASE_URL;
+if (LOCAL_IP) {
+  // 使用配置的本机IP（真机调试）
+  BASE_URL = `http://${LOCAL_IP}:8001/api`;
+} else if (Platform.OS === 'android') {
+  // Android 模拟器
+  BASE_URL = 'http://10.0.2.2:8001/api';
+} else {
+  // iOS 模拟器
+  BASE_URL = 'http://localhost:8001/api';
+}
 
 const api = axios.create({
   baseURL: BASE_URL,

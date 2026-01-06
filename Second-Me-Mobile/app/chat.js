@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { 
   View, 
   Text, 
@@ -6,11 +6,18 @@ import {
   TextInput, 
   TouchableOpacity, 
   FlatList, 
+  Image,
+  Modal,
+  Pressable,
   KeyboardAvoidingView, 
   Platform,
-  ActivityIndicator 
+  ActivityIndicator,
+  Keyboard,
+  InteractionManager
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { 
   sendChatMessage, 
   getRoleByUuid, 
@@ -23,6 +30,8 @@ import { useUser } from '../src/contexts/UserContext';
 export default function ChatScreen() {
   const { userId } = useUser();
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -31,6 +40,61 @@ export default function ChatScreen() {
   const [roleId, setRoleId] = useState(null);
   const [roleName, setRoleName] = useState('"我"'); // 默认显示"我"
   const flatListRef = useRef();
+  const contentHeightRef = useRef(0);
+  const isAutoScrollingRef = useRef(false);
+  const hasInitialScrollRef = useRef(false);
+  const [showAddSheet, setShowAddSheet] = useState(false);
+  const displayMessages = useMemo(() => {
+    const sorted = [...messages].sort((a, b) => {
+      const aTime = a?.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const bTime = b?.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return aTime - bTime;
+    });
+
+    const formatTimeLabel = (date) => {
+      const d = new Date(date);
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const yesterdayStart = new Date(todayStart);
+      yesterdayStart.setDate(todayStart.getDate() - 1);
+
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+
+      if (d >= todayStart) {
+        return `${hh}:${mm}`;
+      }
+      if (d >= yesterdayStart) {
+        return `昨天 ${hh}:${mm}`;
+      }
+
+      const yyyy = d.getFullYear();
+      const MM = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${yyyy}/${MM}/${dd} ${hh}:${mm}`;
+    };
+
+    const grouped = [];
+    let prevTime = null;
+    for (const msg of sorted) {
+      const msgTime = msg?.timestamp ? new Date(msg.timestamp).getTime() : null;
+      const shouldInsertTime =
+        msgTime !== null &&
+        (prevTime === null || msgTime - prevTime >= 5 * 60 * 1000);
+
+      if (shouldInsertTime) {
+        grouped.push({
+          id: `time-${msgTime}-${msg.id}`,
+          type: 'time',
+          label: formatTimeLabel(msg.timestamp),
+        });
+      }
+
+      grouped.push({ ...msg, type: 'message' });
+      prevTime = msgTime ?? prevTime;
+    }
+    return grouped;
+  }, [messages]);
 
   // 初始化：获取或创建会话，并加载历史消息
   useEffect(() => {
@@ -173,25 +237,40 @@ export default function ChatScreen() {
     }
   };
 
-  const renderMessage = ({ item }) => (
-    <View style={[
-      styles.messageBubble,
-      item.sender === 'user' ? styles.userBubble : styles.aiBubble,
-      item.sender === 'system' && styles.systemBubble
-    ]}>
-      <Text style={[
-        styles.messageText,
-        item.sender === 'user' ? styles.userText : styles.aiText
+  const renderMessage = ({ item }) => {
+    if (item.type === 'time') {
+      return (
+        <View style={styles.timeSeparator}>
+          <Text style={styles.timeSeparatorText}>——  {item.label}  ——</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={[
+        styles.messageBubble,
+        item.sender === 'user' ? styles.userBubble : styles.aiBubble,
+        item.sender === 'system' && styles.systemBubble
       ]}>
-        {item.text}
-      </Text>
-    </View>
-  );
+        <Text style={[
+          styles.messageText,
+          item.sender === 'user' ? styles.userText : styles.aiText
+        ]}>
+          {item.text}
+        </Text>
+      </View>
+    );
+  };
 
   // 设置导航栏标题
   useLayoutEffect(() => {
     navigation.setOptions({
       title: roleName,
+      headerTitleAlign: 'center',
+      headerStyle: {
+        backgroundColor: '#F5F6F8',
+      },
+      headerShadowVisible: false,
     });
   }, [navigation, roleName]);
 
@@ -204,6 +283,56 @@ export default function ChatScreen() {
     }
   }, [messages, loadingHistory]);
 
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => {
+      setKeyboardVisible(true);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardVisible(false);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  const bottomInset = insets.bottom;
+  const listPaddingBottom = 12 + bottomInset;
+  const inputContainerStyle = { paddingBottom: 16 + bottomInset };
+  const addSheetBottomOffset = 72 + bottomInset;
+  const scrollToBottom = (animated = true) => {
+    flatListRef.current?.scrollToEnd({ animated });
+  };
+  const scrollToBottomDelayed = () => {
+    isAutoScrollingRef.current = true;
+    scrollToBottom(false);
+    requestAnimationFrame(() => scrollToBottom(false));
+    InteractionManager.runAfterInteractions(() => scrollToBottom(false));
+    setTimeout(() => {
+      scrollToBottom(false);
+      isAutoScrollingRef.current = false;
+    }, 120);
+  };
+  const handleAddPress = () => setShowAddSheet(true);
+  const handleCloseSheet = () => setShowAddSheet(false);
+  const handleAddAction = (action) => {
+    setShowAddSheet(false);
+    console.log(`选择 ${action}`);
+  };
+
+  useEffect(() => {
+    if (keyboardVisible) {
+      scrollToBottomDelayed();
+    }
+  }, [keyboardVisible]);
+
+  useEffect(() => {
+    if (!loadingHistory) {
+      scrollToBottomDelayed();
+    }
+  }, [loadingHistory, messages.length]);
+
   if (loadingHistory) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
@@ -214,48 +343,130 @@ export default function ChatScreen() {
   }
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={100}
+    <LinearGradient
+      colors={['#FFE5F0', '#E5F0FF', '#D6E8FF']}
+      style={styles.container}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
     >
+      <KeyboardAvoidingView 
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 25}
+      >
       <FlatList
         ref={flatListRef}
-        data={messages}
+        data={displayMessages}
         renderItem={renderMessage}
         keyExtractor={item => item.id}
-        contentContainerStyle={styles.messageList}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+        style={styles.messageListContainer}
+        contentContainerStyle={[styles.messageList, { paddingBottom: listPaddingBottom }]}
+        onLayout={() => {
+          if (!hasInitialScrollRef.current && !loadingHistory) {
+            hasInitialScrollRef.current = true;
+            scrollToBottomDelayed();
+          }
+        }}
+        onContentSizeChange={(_, height) => {
+          contentHeightRef.current = height;
+          scrollToBottom(false);
+        }}
+        scrollEventThrottle={16}
       />
 
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.input}
+      <View style={[styles.inputContainer, inputContainerStyle]}>
+        <TouchableOpacity style={styles.iconButton} activeOpacity={0.7} onPress={handleAddPress}>
+          <Image
+            source={require('../assets/chat-input-add.png')}
+            style={styles.iconImage}
+            resizeMode="contain"
+          />
+        </TouchableOpacity>
+
+        <View style={styles.inputWrapper}>
+          <TextInput
+            style={styles.input}
           value={inputText}
           onChangeText={setInputText}
-          placeholder="Type a message..."
+          placeholder="说点什么..."
+          placeholderTextColor="#9AA0A6"
           multiline
+          onFocus={scrollToBottomDelayed}
         />
-        <TouchableOpacity 
-          style={[styles.sendButton, (!inputText.trim() || loading) && styles.disabledButton]} 
-          onPress={handleSend}
+        </View>
+
+        <TouchableOpacity
+          style={styles.iconButton}
+          activeOpacity={0.7}
+          onPress={inputText.trim() ? handleSend : undefined}
           disabled={!inputText.trim() || loading}
         >
-          {loading ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.sendButtonText}>Send</Text>
-          )}
+          <Image
+            source={
+              inputText.trim()
+                ? require('../assets/chat-input-send.png')
+                : require('../assets/chat-input-voice.png')
+            }
+            style={styles.iconImage}
+            resizeMode="contain"
+          />
         </TouchableOpacity>
       </View>
-    </KeyboardAvoidingView>
+
+
+      <Modal transparent visible={showAddSheet} animationType="fade" onRequestClose={handleCloseSheet}>
+        <Pressable style={styles.addSheetBackdrop} onPress={handleCloseSheet}>
+          <View
+            style={[styles.addSheetContainer, { bottom: addSheetBottomOffset }]}
+            onStartShouldSetResponder={() => true}
+          >
+            <TouchableOpacity
+              style={styles.addSheetItem}
+              onPress={() => handleAddAction('相机')}
+              activeOpacity={0.7}
+            >
+              <Image
+                source={require('../assets/chat-input-camera.png')}
+                style={styles.addSheetIcon}
+                resizeMode="contain"
+              />
+              <Text style={styles.addSheetText}>相机</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.addSheetItem}
+              onPress={() => handleAddAction('照片')}
+              activeOpacity={0.7}
+            >
+              <Image
+                source={require('../assets/chat-input-album.png')}
+                style={styles.addSheetIcon}
+                resizeMode="contain"
+              />
+              <Text style={styles.addSheetText}>照片</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.addSheetItem}
+              onPress={() => handleAddAction('文档')}
+              activeOpacity={0.7}
+            >
+              <Image
+                source={require('../assets/chat-input-document.png')}
+                style={styles.addSheetIcon}
+                resizeMode="contain"
+              />
+              <Text style={styles.addSheetText}>文档</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
+      </KeyboardAvoidingView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFE5F0',
   },
   loadingContainer: {
     justifyContent: 'center',
@@ -269,6 +480,9 @@ const styles = StyleSheet.create({
   messageList: {
     padding: 15,
     paddingBottom: 20,
+  },
+  messageListContainer: {
+    flex: 1,
   },
   messageBubble: {
     maxWidth: '80%',
@@ -300,6 +514,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
   },
+  timeSeparator: {
+    alignItems: 'center',
+    marginVertical: 10,
+  },
+  timeSeparatorText: {
+    fontSize: 12,
+    color: '#9AA0A6',
+  },
   userText: {
     color: '#fff',
   },
@@ -308,36 +530,66 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     flexDirection: 'row',
-    padding: 10,
-    backgroundColor: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    backgroundColor: '#F5F6F8',
     borderTopWidth: 1,
-    borderTopColor: '#eee',
-    alignItems: 'flex-end',
+    borderTopColor: '#ECEFF3',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 56,
+  },
+  iconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  iconImage: {
+    width: 30,
+    height: 30,
+  },
+  inputWrapper: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#E6E9EE',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
   input: {
-    flex: 1,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 20,
-    paddingHorizontal: 15,
-    paddingTop: 10,
-    paddingBottom: 10,
+    minHeight: 30,
     maxHeight: 100,
-    marginRight: 10,
+    fontSize: 15,
+    color: '#111',
+    padding: 0,
+  },
+  addSheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    justifyContent: 'flex-end',
+  },
+  addSheetContainer: {
+    position: 'absolute',
+    left: 24,
+    paddingBottom: 28,
+  },
+  addSheetItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    gap: 12,
+  },
+  addSheetIcon: {
+    width: 22,
+    height: 22,
+  },
+  addSheetText: {
     fontSize: 16,
-  },
-  sendButton: {
-    backgroundColor: '#B6D9FF',
-    borderRadius: 20,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    justifyContent: 'center',
-  },
-  disabledButton: {
-    backgroundColor: '#ccc',
-  },
-  sendButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
+    color: '#111',
+    fontWeight: '500',
   },
 });
