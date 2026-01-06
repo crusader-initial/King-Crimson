@@ -1,6 +1,9 @@
 echo "conda环境和依赖安装开始"
 
-cd Second-Me-Lite
+
+export PATH="/home/q/www/miniconda3/bin:$PATH"
+conda init bash
+source ~/.bashrc
 conda activate py311
 
 echo "conda切换结束"
