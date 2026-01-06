@@ -7,7 +7,7 @@ source ~/.bashrc
 
 
 conda -version
-conda activate py311
+conda activate py310
 python --version
 echo "conda切换结束"
 
