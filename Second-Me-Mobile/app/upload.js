@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
 import { uploadDocument } from '../src/services/api';
 import { router } from 'expo-router';
@@ -40,9 +41,14 @@ export default function UploadScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <LinearGradient
+      colors={['#FFE5F0', '#E5F0FF', '#D6E8FF']}
+      style={styles.container}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+    >
       <View style={styles.card}>
-        <Text style={styles.label}>Select Knowledge Source</Text>
+        <Text style={styles.label}>导入数据</Text>
         <Text style={styles.description}>
           Upload a text file or markdown document containing information about the character you want to create.
         </Text>
@@ -67,7 +73,7 @@ export default function UploadScreen() {
           </TouchableOpacity>
         )}
       </View>
-    </View>
+    </LinearGradient>
   );
 }
 
@@ -75,7 +81,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 20,
-    backgroundColor: '#FFE5F0',
   },
   card: {
     backgroundColor: '#fff',
