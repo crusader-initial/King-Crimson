@@ -12,7 +12,7 @@ python --version
 echo "conda切换结束"
 
 
-python run.py
+python /home/q/www/pf_king_crimson/webapps/ROOT/run.py
 
 export AUTO_ENV_NAME="beta"
 
