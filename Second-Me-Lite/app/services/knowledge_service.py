@@ -70,5 +70,5 @@ class L0KnowledgeRetriever:
 
 # create default L0 retriever instance
 default_retriever = L0KnowledgeRetriever(
-    embedding_service=EmbeddingService(), similarity_threshold=0.5, max_chunks=3
+    embedding_service=EmbeddingService(), similarity_threshold=0.4, max_chunks=3
 )

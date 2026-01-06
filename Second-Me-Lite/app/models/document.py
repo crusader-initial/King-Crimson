@@ -87,11 +87,11 @@ class Chunk(Base):
 
     id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)  # 自增主键 (bigserial)
     document_id = Column(Integer, ForeignKey("document.id", ondelete="CASCADE"), nullable=False)  # 关联到 document.id (int4类型)
-    content = Column(String(6000), nullable=False)  # varchar(6000)
-    has_embedding = Column(Boolean, default=False, nullable=False)
-    tags = Column(Text, nullable=True)  # 保持 text 类型
-    topic = Column(String(255), nullable=True)
-    create_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    content = Column(String(6000), nullable=False)  # varchar(6000) NOT NULL
+    has_embedding = Column(Boolean, default=False, nullable=False)  # bool DEFAULT false NOT NULL
+    tags = Column(String(1024), nullable=True)  # varchar(1024) NULL
+    topic = Column(String(6000), nullable=True)  # varchar(6000) DEFAULT NULL
+    create_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)  # timestamptz DEFAULT now() NOT NULL
     
     document = relationship("Document", back_populates="chunks")
 

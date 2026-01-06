@@ -249,12 +249,12 @@ def store_embedding(db: Session, chunk_id: int, embedding: List[float]):
         # 使用 UPSERT 操作存储向量到 chunk_embedding 表
         # 使用 CAST 函数进行类型转换，避免 SQLAlchemy 参数占位符与 PostgreSQL 类型转换语法冲突
         query = text("""
-            INSERT INTO chunk_embedding (chunk_id, embedding, created_at, updated_at)
+            INSERT INTO chunk_embedding (chunk_id, embedding, create_time, update_time)
             VALUES (:chunk_id, CAST(:embedding AS vector), NOW(), NOW())
             ON CONFLICT (chunk_id) 
             DO UPDATE SET 
                 embedding = EXCLUDED.embedding,
-                updated_at = NOW()
+                update_time = NOW()
         """)
         
         db.execute(query, {
@@ -303,12 +303,12 @@ def store_embeddings_batch(db: Session, chunk_ids: List[int], embeddings: np.nda
             embedding_str = '[' + ','.join(map(str, embedding_list)) + ']'
             
             query = text("""
-                INSERT INTO chunk_embedding (chunk_id, embedding, created_at, updated_at)
+                INSERT INTO chunk_embedding (chunk_id, embedding, create_time, update_time)
                 VALUES (:chunk_id, CAST(:embedding AS vector), NOW(), NOW())
                 ON CONFLICT (chunk_id) 
                 DO UPDATE SET 
                     embedding = EXCLUDED.embedding,
-                    updated_at = NOW()
+                    update_time = NOW()
             """)
             
             db.execute(query, {
@@ -346,12 +346,12 @@ def store_document_embedding(db: Session, document_id: int, embedding: List[floa
         # 使用 UPSERT 操作（如果存在则更新，不存在则插入）
         # 使用 CAST 函数进行类型转换，避免 SQLAlchemy 参数占位符与 PostgreSQL 类型转换语法冲突
         query = text("""
-            INSERT INTO document_embedding (document_id, embedding, created_at, updated_at)
+            INSERT INTO document_embedding (document_id, embedding, create_time, update_time)
             VALUES (:document_id, CAST(:embedding AS vector), NOW(), NOW())
             ON CONFLICT (document_id) 
             DO UPDATE SET 
                 embedding = EXCLUDED.embedding,
-                updated_at = NOW()
+                update_time = NOW()
         """)
         
         db.execute(query, {

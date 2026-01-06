@@ -69,7 +69,7 @@ psql -U postgres -d second_me_lite -f migrations/create_chunk_embedding_table.sq
 - `migrations/rebuild_conversation_tables.sql` - **重要**：重建会话和消息表结构（会删除旧表数据）
 - `migrations/create_document_embedding_table.sql` - 文档级别的向量表
 - `migrations/create_chunk_embedding_table.sql` - chunk 级别的向量表
-- `migrations/alter_l1_clusters_cluster_center_to_vector.sql` - 将 l1_clusters 表的 cluster_center 字段从 text 改为 vector(1536) 类型
+- `l1_cluster_embedding` - L1 聚类向量表（存储聚类中心向量，使用复合主键 version + cluster_id，包含 HNSW 向量索引）
 
 **注意**: 
 - **会话和消息表结构已更新**：新的表结构包括：
@@ -154,7 +154,8 @@ python run.py
     *   请求: `multipart/form-data`，字段 `file`（文件）和可选的 `metadata`（JSON 字符串）
     *   响应: 返回文档信息和处理结果
     
-*   **POST /api/file/export-messages**: 将消息导出为文档并执行完整的处理流程
+*   **POST /api/file/export-messages**: 将消息导出为文档并执行完整的处理流程（异步执行）
+    *   **注意**: 此接口采用异步执行模式，会立即返回响应，告知任务已开始执行。实际的处理流程在后台线程中异步执行，不会阻塞前端请求。
     *   功能: 根据 `load_id` 获取用户参与的所有单聊会话，为每个会话创建单独的文档，然后依次执行完整的处理流程：
         1. 将聊天记录消息转换为文档并落表
         2. 文件内容分析（生成 insight 和 summary）
@@ -171,39 +172,25 @@ python run.py
             "description": "从消息导出的文档"  // 可选，文档描述
         }
         ```
-    *   响应: 返回创建的文档列表、处理结果统计以及生成的数据
+    *   响应: 立即返回任务开始状态（实际处理结果请查看服务器日志）
         ```json
         {
+            "code": 200,
             "success": true,
-            "message": "导出完成: 创建 N 个文档，成功处理 M 个，失败 K 个，身份传记生成成功，L1数据生成成功（版本: V）",
+            "message": "任务已开始执行，处理结果请查看日志",
             "data": {
-                "created_count": N,
-                "processed_documents": [
-                    {
-                        "document_id": "文档ID",
-                        "filename": "文件名",
-                        "participant_name": "参与者名称"
-                    }
-                ],
-                "failed_documents": [
-                    {
-                        "document_id": "文档ID",
-                        "step": 2,  // 失败的步骤编号（可选）
-                        "error": "错误信息"
-                    }
-                ],
-                "status_bio": {
-                    "content": "状态传记内容（第二视角）",
-                    "content_third_view": "状态传记内容（第三视角）",
-                    "summary": "状态传记摘要（第二视角）",
-                    "summary_third_view": "状态传记摘要（第三视角）"
-                },
-                "l1_data": {
-                    "version": "版本号",
-                    "data": { /* L1数据对象 */ }
-                },
-                "role_id": "角色ID"
+                "load_id": "user-uuid",
+                "status": "processing",
+                "message": "任务已开始在后台执行"
             }
+        }
+        ```
+    *   **处理结果**: 实际的处理结果会记录在服务器日志中，日志标识为 `[后台任务]`。处理流程包括：
+        - 创建的文档数量
+        - 成功处理的文档列表
+        - 失败的文档列表（包含错误信息）
+        - 身份传记数据生成结果
+        - L1层数据生成结果（包含版本号）
         }
         ```
     *   说明:

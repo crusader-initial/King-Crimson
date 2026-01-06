@@ -7,7 +7,7 @@ import logging
 import numpy as np
 
 
-DEFAULT_EMBEDDING_DIM = 1536
+DEFAULT_EMBEDDING_DIM = 1024  # bge-m3 模型的向量维度是 1024
 DISTANCE_RATE = 0.8
 
 

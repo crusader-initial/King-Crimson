@@ -29,6 +29,10 @@ def get_latest_global_bio(role_id: Optional[str] = None) -> Optional[GlobalBio]:
         GlobalBio 对象，如果不存在返回 None
     """
     try:
+        # 确保 role_id 是字符串类型（数据库列是 VARCHAR）
+        if role_id is not None:
+            role_id = str(role_id)
+        
         db = SessionLocal()
         try:
             # 如果提供了 role_id，获取该角色的 L1 bio
@@ -119,6 +123,10 @@ class L1KnowledgeRetriever:
             str: 结构化的知识内容，如果未找到相关知识则返回空字符串
         """
         try:
+            # 确保 role_id 是字符串类型（数据库列是 VARCHAR）
+            if role_id is not None:
+                role_id = str(role_id)
+            
             # 直接查询 l1_shades 表
             if not role_id:
                 logger.info("未提供 role_id，无法查询 shades")
@@ -202,6 +210,6 @@ class L1KnowledgeRetriever:
 
 # 创建默认的L1检索器实例
 default_l1_retriever = L1KnowledgeRetriever(
-    embedding_service=EmbeddingService(), similarity_threshold=0.7, max_shades=3
+    embedding_service=EmbeddingService(), similarity_threshold=0.4, max_shades=3
 )
 

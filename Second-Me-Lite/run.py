@@ -7,7 +7,7 @@ from app.core.database import engine, Base
 from app.core.config import settings
 # 导入所有模型以确保表被创建
 from app.models import Document, Chunk, Load, StatusBiography, Role
-from app.models.l1 import L1Version, L1Bio, L1Shade, L1Cluster, L1ChunkTopic
+from app.models.l1 import L1Version, L1Bio, L1Shade, L1ClusterEmbedding, L1ChunkTopic
 
 # 导入所有路由
 from app.api import health, chat, files, users, biography, kernel

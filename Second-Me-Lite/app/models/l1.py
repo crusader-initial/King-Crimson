@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, ForeignKey, Index
 from datetime import datetime
 from app.core.database import Base
 
@@ -69,16 +69,20 @@ class L1Shade(Base):
     role_id = Column(String(64), nullable=False)  # 角色ID（varchar(64)类型，NOT NULL）
 
 
-class L1Cluster(Base):
-    """L1聚类表"""
-    __tablename__ = "l1_clusters"
+class L1ClusterEmbedding(Base):
+    """L1聚类向量表（用于存储聚类中心向量）"""
+    __tablename__ = "l1_cluster_embedding"
     
-    id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)  # 自增主键 (bigserial)
-    version = Column(Integer, ForeignKey("l1_versions.version", ondelete="CASCADE"), nullable=False, index=True)
-    cluster_id = Column(String(100), nullable=True)
-    memory_ids = Column(String(50), nullable=True)  # varchar(50)
-    cluster_center = Column(Vector(1536), nullable=True)  # 聚类中心向量（使用 pgvector 扩展）
+    # 使用复合主键：version + cluster_id
+    version = Column(Integer, ForeignKey("l1_versions.version", ondelete="CASCADE"), primary_key=True, nullable=False)
+    cluster_id = Column(String(100), primary_key=True, nullable=False)
+    cluster_center = Column(Vector(1024), nullable=False)  # 聚类中心向量（使用 pgvector 扩展，1024 维与 bge-m3 一致）
     create_time = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    
+    # 创建索引（HNSW 向量索引需要在数据库迁移脚本中创建）
+    __table_args__ = (
+        Index('l1_cluster_embedding_version_idx', 'version'),
+    )
 
 
 class L1ChunkTopic(Base):
